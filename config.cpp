@@ -1,86 +1,153 @@
 #include "config.h"
 
-Config::Config(){
-    //端口号,默认9006
-    PORT = 9006;
+#include <getopt.h>
 
-    //日志写入方式，默认同步
-    LOGWrite = 0;
+#include <iostream>
+#include <exception>
+#include <fstream>
 
-    //触发组合模式,默认listenfd LT + connfd LT
-    TRIGMode = 0;
+namespace
+{
+int parse_or_default(const char *arg, int fallback, char flag)
+{
+    if (arg == nullptr)
+    {
+        return fallback;
+    }
 
-    //listenfd触发模式，默认LT
-    LISTENTrigmode = 0;
-
-    //connfd触发模式，默认LT
-    CONNTrigmode = 0;
-
-    //优雅关闭链接，默认不使用
-    OPT_LINGER = 0;
-
-    //数据库连接池数量,默认8
-    sql_num = 8;
-
-    //线程池内的线程数量,默认8
-    thread_num = 8;
-
-    //关闭日志,默认不关闭
-    close_log = 0;
-
-    //并发模型,默认是proactor
-    actor_model = 0;
+    try
+    {
+        return std::stoi(arg);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[Config] 无效的参数值: -" << flag << "=" << arg
+                  << ", 使用默认值 " << fallback << std::endl;
+        return fallback;
+    }
 }
 
-void Config::parse_arg(int argc, char*argv[]){
-    int opt;
-    const char *str = "p:l:m:o:s:t:c:a:";
-    while ((opt = getopt(argc, argv, str)) != -1)
+std::string trim(const std::string& str)
+{
+    size_t first = str.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+        return "";
+    size_t last = str.find_last_not_of(" \t\r\n");
+    return str.substr(first, last - first + 1);
+}
+} // namespace
+
+Config::Config()
+    : PORT(9006),
+      LOGWrite(0),
+      TRIGMode(0),
+      LISTENTrigmode(0),
+      CONNTrigmode(0),
+      OPT_LINGER(0),
+      sql_num(8),
+      thread_num(8),
+      close_log(0),
+      actor_model(0)
+{
+}
+
+void Config::parse_arg(int argc, char *argv[])
+{
+    int opt = 0;
+    constexpr const char *kOptString = "p:l:m:o:s:t:c:a:f:";
+
+    while ((opt = getopt(argc, argv, kOptString)) != -1)
     {
         switch (opt)
         {
         case 'p':
-        {
-            PORT = atoi(optarg);
+            PORT = parse_or_default(optarg, PORT, 'p');
             break;
-        }
         case 'l':
-        {
-            LOGWrite = atoi(optarg);
+            LOGWrite = parse_or_default(optarg, LOGWrite, 'l');
             break;
-        }
         case 'm':
-        {
-            TRIGMode = atoi(optarg);
+            TRIGMode = parse_or_default(optarg, TRIGMode, 'm');
             break;
-        }
         case 'o':
-        {
-            OPT_LINGER = atoi(optarg);
+            OPT_LINGER = parse_or_default(optarg, OPT_LINGER, 'o');
             break;
-        }
         case 's':
-        {
-            sql_num = atoi(optarg);
+            sql_num = parse_or_default(optarg, sql_num, 's');
             break;
-        }
         case 't':
-        {
-            thread_num = atoi(optarg);
+            thread_num = parse_or_default(optarg, thread_num, 't');
             break;
-        }
         case 'c':
-        {
-            close_log = atoi(optarg);
+            close_log = parse_or_default(optarg, close_log, 'c');
             break;
-        }
         case 'a':
-        {
-            actor_model = atoi(optarg);
+            actor_model = parse_or_default(optarg, actor_model, 'a');
             break;
-        }
+        case 'f':
+            if (optarg)
+            {
+                load_from_file(optarg);
+            }
+            break;
         default:
             break;
         }
     }
+}
+
+bool Config::load_from_file(const std::string& config_file)
+{
+    std::ifstream infile(config_file);
+    if (!infile.is_open())
+    {
+        std::cerr << "[Config] 无法打开配置文件: " << config_file << std::endl;
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(infile, line))
+    {
+        line = trim(line);
+        if (line.empty() || line[0] == '#')
+            continue;
+
+        size_t eq_pos = line.find('=');
+        if (eq_pos == std::string::npos)
+            continue;
+
+        std::string key = trim(line.substr(0, eq_pos));
+        std::string value = trim(line.substr(eq_pos + 1));
+
+        try
+        {
+            if (key == "PORT")
+                PORT = std::stoi(value);
+            else if (key == "LOGWrite")
+                LOGWrite = std::stoi(value);
+            else if (key == "TRIGMode")
+                TRIGMode = std::stoi(value);
+            else if (key == "LISTENTrigmode")
+                LISTENTrigmode = std::stoi(value);
+            else if (key == "CONNTrigmode")
+                CONNTrigmode = std::stoi(value);
+            else if (key == "OPT_LINGER")
+                OPT_LINGER = std::stoi(value);
+            else if (key == "sql_num")
+                sql_num = std::stoi(value);
+            else if (key == "thread_num")
+                thread_num = std::stoi(value);
+            else if (key == "close_log")
+                close_log = std::stoi(value);
+            else if (key == "actor_model")
+                actor_model = std::stoi(value);
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "[Config] 无法解析配置项: " << key << "=" << value << std::endl;
+        }
+    }
+
+    std::cout << "[Config] 成功从文件加载配置: " << config_file << std::endl;
+    return true;
 }

@@ -2,8 +2,7 @@
 #define CONFIG_H
 
 #include "webserver.h"
-
-using namespace std;
+#include <string>
 
 class Config
 {
@@ -12,6 +11,7 @@ public:
     ~Config(){};
 
     void parse_arg(int argc, char*argv[]);
+    bool load_from_file(const std::string& config_file);
 
     //端口号
     int PORT;

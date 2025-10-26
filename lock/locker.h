@@ -1,10 +1,12 @@
 #ifndef LOCKER_H
 #define LOCKER_H
 
-#include <exception>
-#include <pthread.h>
+#include <mutex>
+#include <condition_variable>
 #include <semaphore.h>
+#include <exception>
 
+// 信号量封装（依旧使用 POSIX 信号量，因为 C++20 才有 std::counting_semaphore）
 class sem
 {
 public:
@@ -38,78 +40,68 @@ public:
 private:
     sem_t m_sem;
 };
+
+// 互斥锁封装：使用 std::mutex
 class locker
 {
 public:
-    locker()
-    {
-        if (pthread_mutex_init(&m_mutex, NULL) != 0)
-        {
-            throw std::exception();
-        }
-    }
-    ~locker()
-    {
-        pthread_mutex_destroy(&m_mutex);
-    }
+    locker() = default;
+    ~locker() = default;
+
     bool lock()
     {
-        return pthread_mutex_lock(&m_mutex) == 0;
+        m_mutex.lock();
+        return true;
     }
     bool unlock()
     {
-        return pthread_mutex_unlock(&m_mutex) == 0;
+        m_mutex.unlock();
+        return true;
     }
-    pthread_mutex_t *get()
+    std::mutex* get()
     {
         return &m_mutex;
     }
 
 private:
-    pthread_mutex_t m_mutex;
+    std::mutex m_mutex;
 };
+
+// 条件变量封装：使用 std::condition_variable
 class cond
 {
 public:
-    cond()
+    cond() = default;
+    ~cond() = default;
+
+    bool wait(std::mutex *mtx)
     {
-        if (pthread_cond_init(&m_cond, NULL) != 0)
-        {
-            //pthread_mutex_destroy(&m_mutex);
-            throw std::exception();
-        }
+        std::unique_lock<std::mutex> lock(*mtx, std::adopt_lock);
+        m_cond.wait(lock);
+        lock.release(); // 不让 unique_lock 析构时再次解锁
+        return true;
     }
-    ~cond()
+    bool timewait(std::mutex *mtx, struct timespec t)
     {
-        pthread_cond_destroy(&m_cond);
-    }
-    bool wait(pthread_mutex_t *m_mutex)
-    {
-        int ret = 0;
-        //pthread_mutex_lock(&m_mutex);
-        ret = pthread_cond_wait(&m_cond, m_mutex);
-        //pthread_mutex_unlock(&m_mutex);
-        return ret == 0;
-    }
-    bool timewait(pthread_mutex_t *m_mutex, struct timespec t)
-    {
-        int ret = 0;
-        //pthread_mutex_lock(&m_mutex);
-        ret = pthread_cond_timedwait(&m_cond, m_mutex, &t);
-        //pthread_mutex_unlock(&m_mutex);
-        return ret == 0;
+        std::unique_lock<std::mutex> lock(*mtx, std::adopt_lock);
+        auto timeout = std::chrono::seconds(t.tv_sec) + std::chrono::nanoseconds(t.tv_nsec);
+        auto result = m_cond.wait_for(lock, timeout);
+        lock.release();
+        return result != std::cv_status::timeout;
     }
     bool signal()
     {
-        return pthread_cond_signal(&m_cond) == 0;
+        m_cond.notify_one();
+        return true;
     }
     bool broadcast()
     {
-        return pthread_cond_broadcast(&m_cond) == 0;
+        m_cond.notify_all();
+        return true;
     }
 
 private:
-    //static pthread_mutex_t m_mutex;
-    pthread_cond_t m_cond;
+    std::condition_variable m_cond;
 };
+
 #endif

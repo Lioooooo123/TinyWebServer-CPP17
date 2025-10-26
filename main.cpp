@@ -1,11 +1,13 @@
 #include "config.h"
 
+#include <string>
+
 int main(int argc, char *argv[])
 {
     //需要修改的数据库信息,登录名,密码,库名
-    string user = "root";
-    string passwd = "root";
-    string databasename = "qgydb";
+    std::string user = "root";
+    std::string passwd = "root";
+    std::string databasename = "Liodb";
 
     //命令行解析
     Config config;

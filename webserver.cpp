@@ -1,34 +1,59 @@
 #include "webserver.h"
 
+#include <filesystem>
+
 WebServer::WebServer()
+    : m_port(0),
+      m_root(),
+      m_log_write(0),
+      m_close_log(0),
+      m_actormodel(0),
+      m_pipefd{-1, -1},
+      m_epollfd(-1),
+      m_users(MAX_FD),
+      m_connPool(nullptr),
+      m_user(),
+      m_passWord(),
+      m_databaseName(),
+      m_sql_num(0),
+      m_pool(nullptr),
+      m_thread_num(0),
+      m_listenfd(-1),
+      m_OPT_LINGER(0),
+      m_TRIGMode(0),
+      m_LISTENTrigmode(0),
+      m_CONNTrigmode(0),
+      m_users_timer(MAX_FD)
 {
-    //http_conn类对象
-    users = new http_conn[MAX_FD];
-
     //root文件夹路径
-    char server_path[200];
-    getcwd(server_path, 200);
-    char root[6] = "/root";
-    m_root = (char *)malloc(strlen(server_path) + strlen(root) + 1);
-    strcpy(m_root, server_path);
-    strcat(m_root, root);
-
-    //定时器
-    users_timer = new client_data[MAX_FD];
+    m_root = (std::filesystem::current_path() / "root").string();
 }
 
 WebServer::~WebServer()
 {
-    close(m_epollfd);
-    close(m_listenfd);
-    close(m_pipefd[1]);
-    close(m_pipefd[0]);
-    delete[] users;
-    delete[] users_timer;
-    delete m_pool;
+    if (m_epollfd != -1)
+    {
+        close(m_epollfd);
+        m_epollfd = -1;
+    }
+    if (m_listenfd != -1)
+    {
+        close(m_listenfd);
+        m_listenfd = -1;
+    }
+    if (m_pipefd[1] != -1)
+    {
+        close(m_pipefd[1]);
+        m_pipefd[1] = -1;
+    }
+    if (m_pipefd[0] != -1)
+    {
+        close(m_pipefd[0]);
+        m_pipefd[0] = -1;
+    }
 }
 
-void WebServer::init(int port, string user, string passWord, string databaseName, int log_write, 
+void WebServer::init(int port, const std::string &user, const std::string &passWord, const std::string &databaseName, int log_write,
                      int opt_linger, int trigmode, int sql_num, int thread_num, int close_log, int actor_model)
 {
     m_port = port;
@@ -91,13 +116,16 @@ void WebServer::sql_pool()
     m_connPool->init("localhost", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
 
     //初始化数据库读取表
-    users->initmysql_result(m_connPool);
+    if (!m_users.empty())
+    {
+        m_users.front().initmysql_result(m_connPool);
+    }
 }
 
 void WebServer::thread_pool()
 {
     //线程池
-    m_pool = new threadpool<http_conn>(m_actormodel, m_connPool, m_thread_num);
+    m_pool = std::make_unique<threadpool<http_conn>>(m_actormodel, m_connPool, m_thread_num);
 }
 
 void WebServer::eventListen()
@@ -160,18 +188,18 @@ void WebServer::eventListen()
 
 void WebServer::timer(int connfd, struct sockaddr_in client_address)
 {
-    users[connfd].init(connfd, client_address, m_root, m_CONNTrigmode, m_close_log, m_user, m_passWord, m_databaseName);
+    m_users[connfd].init(connfd, client_address, const_cast<char *>(m_root.c_str()), m_CONNTrigmode, m_close_log, m_user, m_passWord, m_databaseName);
 
     //初始化client_data数据
     //创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
-    users_timer[connfd].address = client_address;
-    users_timer[connfd].sockfd = connfd;
+    m_users_timer[connfd].address = client_address;
+    m_users_timer[connfd].sockfd = connfd;
     util_timer *timer = new util_timer;
-    timer->user_data = &users_timer[connfd];
+    timer->user_data = &m_users_timer[connfd];
     timer->cb_func = cb_func;
     time_t cur = time(NULL);
     timer->expire = cur + 3 * TIMESLOT;
-    users_timer[connfd].timer = timer;
+    m_users_timer[connfd].timer = timer;
     utils.m_timer_lst.add_timer(timer);
 }
 
@@ -188,13 +216,14 @@ void WebServer::adjust_timer(util_timer *timer)
 
 void WebServer::deal_timer(util_timer *timer, int sockfd)
 {
-    timer->cb_func(&users_timer[sockfd]);
+    timer->cb_func(&m_users_timer[sockfd]);
     if (timer)
     {
         utils.m_timer_lst.del_timer(timer);
     }
 
-    LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
+    LOG_INFO("close fd %d", m_users_timer[sockfd].sockfd);
+    m_users_timer[sockfd].timer = nullptr;
 }
 
 bool WebServer::dealclientdata()
@@ -279,7 +308,7 @@ bool WebServer::dealwithsignal(bool &timeout, bool &stop_server)
 
 void WebServer::dealwithread(int sockfd)
 {
-    util_timer *timer = users_timer[sockfd].timer;
+    util_timer *timer = m_users_timer[sockfd].timer;
 
     //reactor
     if (1 == m_actormodel)
@@ -290,18 +319,18 @@ void WebServer::dealwithread(int sockfd)
         }
 
         //若监测到读事件，将该事件放入请求队列
-        m_pool->append(users + sockfd, 0);
+        m_pool->append(&m_users[sockfd], 0);
 
         while (true)
         {
-            if (1 == users[sockfd].improv)
+            if (1 == m_users[sockfd].improv)
             {
-                if (1 == users[sockfd].timer_flag)
+                if (1 == m_users[sockfd].timer_flag)
                 {
                     deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
+                    m_users[sockfd].timer_flag = 0;
                 }
-                users[sockfd].improv = 0;
+                m_users[sockfd].improv = 0;
                 break;
             }
         }
@@ -309,12 +338,12 @@ void WebServer::dealwithread(int sockfd)
     else
     {
         //proactor
-        if (users[sockfd].read_once())
+        if (m_users[sockfd].read_once())
         {
-            LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+            LOG_INFO("deal with the client(%s)", inet_ntoa(m_users[sockfd].get_address()->sin_addr));
 
             //若监测到读事件，将该事件放入请求队列
-            m_pool->append_p(users + sockfd);
+            m_pool->append_p(&m_users[sockfd]);
 
             if (timer)
             {
@@ -330,7 +359,7 @@ void WebServer::dealwithread(int sockfd)
 
 void WebServer::dealwithwrite(int sockfd)
 {
-    util_timer *timer = users_timer[sockfd].timer;
+    util_timer *timer = m_users_timer[sockfd].timer;
     //reactor
     if (1 == m_actormodel)
     {
@@ -339,18 +368,18 @@ void WebServer::dealwithwrite(int sockfd)
             adjust_timer(timer);
         }
 
-        m_pool->append(users + sockfd, 1);
+        m_pool->append(&m_users[sockfd], 1);
 
         while (true)
         {
-            if (1 == users[sockfd].improv)
+            if (1 == m_users[sockfd].improv)
             {
-                if (1 == users[sockfd].timer_flag)
+                if (1 == m_users[sockfd].timer_flag)
                 {
                     deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
+                    m_users[sockfd].timer_flag = 0;
                 }
-                users[sockfd].improv = 0;
+                m_users[sockfd].improv = 0;
                 break;
             }
         }
@@ -358,9 +387,9 @@ void WebServer::dealwithwrite(int sockfd)
     else
     {
         //proactor
-        if (users[sockfd].write())
+        if (m_users[sockfd].write())
         {
-            LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+            LOG_INFO("send data to the client(%s)", inet_ntoa(m_users[sockfd].get_address()->sin_addr));
 
             if (timer)
             {
@@ -402,7 +431,7 @@ void WebServer::eventLoop()
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
                 //服务器端关闭连接，移除对应的定时器
-                util_timer *timer = users_timer[sockfd].timer;
+                util_timer *timer = m_users_timer[sockfd].timer;
                 deal_timer(timer, sockfd);
             }
             //处理信号

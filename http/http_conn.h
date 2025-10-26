@@ -20,6 +20,7 @@
 #include <sys/wait.h>
 #include <sys/uio.h>
 #include <map>
+#include <string>
 
 #include "../lock/locker.h"
 #include "../CGImysql/sql_connection_pool.h"
@@ -73,7 +74,7 @@ public:
     ~http_conn() {}
 
 public:
-    void init(int sockfd, const sockaddr_in &addr, char *, int, int, string user, string passwd, string sqlname);
+    void init(int sockfd, const sockaddr_in &addr, char *, int, int, const std::string &user, const std::string &passwd, const std::string &sqlname);
     void close_conn(bool real_close = true);
     void process();
     bool read_once();
@@ -140,7 +141,7 @@ private:
     int bytes_have_send;
     char *doc_root;
 
-    map<string, string> m_users;
+    std::map<std::string, std::string> m_users;
     int m_TRIGMode;
     int m_close_log;
 

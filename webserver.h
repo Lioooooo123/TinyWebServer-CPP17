@@ -12,6 +12,10 @@
 #include <cassert>
 #include <sys/epoll.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "./threadpool/threadpool.h"
 #include "./http/http_conn.h"
 
@@ -25,7 +29,7 @@ public:
     WebServer();
     ~WebServer();
 
-    void init(int port , string user, string passWord, string databaseName,
+    void init(int port , const std::string& user, const std::string& passWord, const std::string& databaseName,
               int log_write , int opt_linger, int trigmode, int sql_num,
               int thread_num, int close_log, int actor_model);
 
@@ -46,24 +50,24 @@ public:
 public:
     //基础
     int m_port;
-    char *m_root;
+    std::string m_root;
     int m_log_write;
     int m_close_log;
     int m_actormodel;
 
     int m_pipefd[2];
     int m_epollfd;
-    http_conn *users;
+    std::vector<http_conn> m_users;
 
     //数据库相关
     connection_pool *m_connPool;
-    string m_user;         //登陆数据库用户名
-    string m_passWord;     //登陆数据库密码
-    string m_databaseName; //使用数据库名
+    std::string m_user;         //登陆数据库用户名
+    std::string m_passWord;     //登陆数据库密码
+    std::string m_databaseName; //使用数据库名
     int m_sql_num;
 
     //线程池相关
-    threadpool<http_conn> *m_pool;
+    std::unique_ptr<threadpool<http_conn>> m_pool;
     int m_thread_num;
 
     //epoll_event相关
@@ -76,7 +80,7 @@ public:
     int m_CONNTrigmode;
 
     //定时器相关
-    client_data *users_timer;
+    std::vector<client_data> m_users_timer;
     Utils utils;
 };
 #endif
