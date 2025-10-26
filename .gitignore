@@ -1,0 +1,33 @@
+# 编译产物
+server
+*.o
+*.so
+*.a
+
+# 日志文件
+*ServerLog*
+*.log
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 调试文件
+*.dSYM/
+core
+
+# 临时文件
+*.tmp
+*.bak
+*.old
+
+# 数据库文件
+*.db
+*.sqlite
