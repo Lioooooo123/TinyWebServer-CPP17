@@ -1,463 +1,422 @@
+// Copyright 2025 TinyWebServer
+// WebServer 类的实现
+
 #include "webserver.h"
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/socket.h>
+
+#include <cassert>
+#include <cstring>
 #include <filesystem>
 
+namespace tinywebserver {
+
 WebServer::WebServer()
-    : m_port(0),
-      m_root(),
-      m_log_write(0),
-      m_close_log(0),
-      m_actormodel(0),
-      m_pipefd{-1, -1},
-      m_epollfd(-1),
-      m_users(MAX_FD),
-      m_connPool(nullptr),
-      m_user(),
-      m_passWord(),
-      m_databaseName(),
-      m_sql_num(0),
-      m_pool(nullptr),
-      m_thread_num(0),
-      m_listenfd(-1),
-      m_OPT_LINGER(0),
-      m_TRIGMode(0),
-      m_LISTENTrigmode(0),
-      m_CONNTrigmode(0),
-      m_users_timer(MAX_FD)
-{
-    //root文件夹路径
-    m_root = (std::filesystem::current_path() / "root").string();
+    : port_(0),
+      root_dir_(),
+      log_write_mode_(0),
+      close_log_(0),
+      actor_model_(0),
+      pipe_fd_{-1, -1},
+      epoll_fd_(-1),
+      users_(kMaxFd),
+      conn_pool_(nullptr),
+      db_user_(),
+      db_password_(),
+      db_name_(),
+      sql_connection_num_(0),
+      thread_pool_(nullptr),
+      thread_num_(0),
+      listen_fd_(-1),
+      opt_linger_(0),
+      trigger_mode_(0),
+      listen_trigger_mode_(0),
+      conn_trigger_mode_(0),
+      users_timer_(kMaxFd) {
+  // 设置根目录路径
+  root_dir_ = (std::filesystem::current_path() / "root").string();
 }
 
-WebServer::~WebServer()
-{
-    if (m_epollfd != -1)
-    {
-        close(m_epollfd);
-        m_epollfd = -1;
-    }
-    if (m_listenfd != -1)
-    {
-        close(m_listenfd);
-        m_listenfd = -1;
-    }
-    if (m_pipefd[1] != -1)
-    {
-        close(m_pipefd[1]);
-        m_pipefd[1] = -1;
-    }
-    if (m_pipefd[0] != -1)
-    {
-        close(m_pipefd[0]);
-        m_pipefd[0] = -1;
-    }
+WebServer::~WebServer() {
+  if (epoll_fd_ != -1) {
+    close(epoll_fd_);
+    epoll_fd_ = -1;
+  }
+  if (listen_fd_ != -1) {
+    close(listen_fd_);
+    listen_fd_ = -1;
+  }
+  if (pipe_fd_[1] != -1) {
+    close(pipe_fd_[1]);
+    pipe_fd_[1] = -1;
+  }
+  if (pipe_fd_[0] != -1) {
+    close(pipe_fd_[0]);
+    pipe_fd_[0] = -1;
+  }
 }
 
-void WebServer::init(int port, const std::string &user, const std::string &passWord, const std::string &databaseName, int log_write,
-                     int opt_linger, int trigmode, int sql_num, int thread_num, int close_log, int actor_model)
-{
-    m_port = port;
-    m_user = user;
-    m_passWord = passWord;
-    m_databaseName = databaseName;
-    m_sql_num = sql_num;
-    m_thread_num = thread_num;
-    m_log_write = log_write;
-    m_OPT_LINGER = opt_linger;
-    m_TRIGMode = trigmode;
-    m_close_log = close_log;
-    m_actormodel = actor_model;
+void WebServer::Init(int port, const std::string& user,
+                     const std::string& password,
+                     const std::string& database_name, int log_write_mode,
+                     int opt_linger, int trigger_mode, int sql_num,
+                     int thread_num, int close_log, int actor_model) {
+  port_ = port;
+  db_user_ = user;
+  db_password_ = password;
+  db_name_ = database_name;
+  sql_connection_num_ = sql_num;
+  thread_num_ = thread_num;
+  log_write_mode_ = log_write_mode;
+  opt_linger_ = opt_linger;
+  trigger_mode_ = trigger_mode;
+  close_log_ = close_log;
+  actor_model_ = actor_model;
 }
 
-void WebServer::trig_mode()
-{
-    //LT + LT
-    if (0 == m_TRIGMode)
-    {
-        m_LISTENTrigmode = 0;
-        m_CONNTrigmode = 0;
-    }
-    //LT + ET
-    else if (1 == m_TRIGMode)
-    {
-        m_LISTENTrigmode = 0;
-        m_CONNTrigmode = 1;
-    }
-    //ET + LT
-    else if (2 == m_TRIGMode)
-    {
-        m_LISTENTrigmode = 1;
-        m_CONNTrigmode = 0;
-    }
-    //ET + ET
-    else if (3 == m_TRIGMode)
-    {
-        m_LISTENTrigmode = 1;
-        m_CONNTrigmode = 1;
-    }
+void WebServer::SetTriggerMode() {
+  // LT + LT
+  if (trigger_mode_ == 0) {
+    listen_trigger_mode_ = 0;
+    conn_trigger_mode_ = 0;
+  }
+  // LT + ET
+  else if (trigger_mode_ == 1) {
+    listen_trigger_mode_ = 0;
+    conn_trigger_mode_ = 1;
+  }
+  // ET + LT
+  else if (trigger_mode_ == 2) {
+    listen_trigger_mode_ = 1;
+    conn_trigger_mode_ = 0;
+  }
+  // ET + ET
+  else if (trigger_mode_ == 3) {
+    listen_trigger_mode_ = 1;
+    conn_trigger_mode_ = 1;
+  }
 }
 
-void WebServer::log_write()
-{
-    if (0 == m_close_log)
-    {
-        //初始化日志
-        if (1 == m_log_write)
-            Log::get_instance()->init("./ServerLog", m_close_log, 2000, 800000, 800);
-        else
-            Log::get_instance()->init("./ServerLog", m_close_log, 2000, 800000, 0);
+void WebServer::InitLog() {
+  if (close_log_ == 0) {
+    // 初始化日志系统
+    if (log_write_mode_ == 1) {
+      Logger::GetInstance()->Init("./ServerLog", close_log_, 2000, 800000, 800);
+    } else {
+      Logger::GetInstance()->Init("./ServerLog", close_log_, 2000, 800000, 0);
     }
+  }
 }
 
-void WebServer::sql_pool()
-{
-    //初始化数据库连接池
-    m_connPool = connection_pool::GetInstance();
-    m_connPool->init("localhost", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
+void WebServer::InitSqlPool() {
+  // 初始化数据库连接池
+  conn_pool_ = ConnectionPool::GetInstance();
+  conn_pool_->Init("localhost", db_user_, db_password_, db_name_, 3306,
+                   sql_connection_num_, close_log_);
 
-    //初始化数据库读取表
-    if (!m_users.empty())
-    {
-        m_users.front().initmysql_result(m_connPool);
+  // 初始化数据库用户表
+  if (!users_.empty()) {
+    users_.front().initmysql_result(conn_pool_);
+  }
+}
+
+void WebServer::InitThreadPool() {
+  // 初始化线程池
+  thread_pool_ =
+      std::make_unique<ThreadPool<HttpConnection>>(actor_model_, conn_pool_, thread_num_);
+}
+
+void WebServer::StartListen() {
+  // 创建监听套接字
+  listen_fd_ = socket(PF_INET, SOCK_STREAM, 0);
+  assert(listen_fd_ >= 0);
+
+  // 配置 SO_LINGER 选项
+  if (opt_linger_ == 0) {
+    struct linger tmp = {0, 1};
+    setsockopt(listen_fd_, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+  } else if (opt_linger_ == 1) {
+    struct linger tmp = {1, 1};
+    setsockopt(listen_fd_, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+  }
+
+  // 绑定套接字
+  int ret = 0;
+  struct sockaddr_in address;
+  std::memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_ANY);
+  address.sin_port = htons(port_);
+
+  int flag = 1;
+  setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+  ret = bind(listen_fd_, reinterpret_cast<struct sockaddr*>(&address),
+             sizeof(address));
+  assert(ret >= 0);
+  ret = listen(listen_fd_, 5);
+  assert(ret >= 0);
+
+  timer_utils_.Init(kTimeSlot);
+
+  // 创建 epoll 实例
+  epoll_fd_ = epoll_create(5);
+  assert(epoll_fd_ != -1);
+
+  timer_utils_.AddFd(epoll_fd_, listen_fd_, false, listen_trigger_mode_);
+  HttpConnection::m_epollfd = epoll_fd_;
+
+  // 创建信号管道
+  ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipe_fd_);
+  assert(ret != -1);
+  timer_utils_.SetNonBlocking(pipe_fd_[1]);
+  timer_utils_.AddFd(epoll_fd_, pipe_fd_[0], false, 0);
+
+  // 注册信号处理器
+  timer_utils_.AddSignal(SIGPIPE, SIG_IGN);
+  timer_utils_.AddSignal(SIGALRM, TimerUtils::SignalHandler, false);
+  timer_utils_.AddSignal(SIGTERM, TimerUtils::SignalHandler, false);
+
+  alarm(kTimeSlot);
+
+  // 设置用于信号处理的静态成员
+  TimerUtils::pipe_fd_ = pipe_fd_;
+  TimerUtils::epoll_fd_ = epoll_fd_;
+}
+
+void WebServer::AddTimer(int connfd, const sockaddr_in& client_address) {
+  users_[connfd].init(connfd, client_address,
+                      const_cast<char*>(root_dir_.c_str()), conn_trigger_mode_,
+                      close_log_, db_user_, db_password_, db_name_);
+
+  // 初始化客户端数据并创建定时器
+  users_timer_[connfd].address = client_address;
+  users_timer_[connfd].sockfd = connfd;
+
+  Timer* timer = new Timer;
+  timer->user_data_ = &users_timer_[connfd];
+  timer->callback_ = TimerCallback;
+
+  auto now = std::chrono::steady_clock::now();
+  timer->expire_time_ = now + std::chrono::seconds(3 * kTimeSlot);
+
+  users_timer_[connfd].timer = timer;
+  timer_utils_.timer_list_.AddTimer(timer);
+}
+
+void WebServer::AdjustTimer(Timer* timer) {
+  auto now = std::chrono::steady_clock::now();
+  timer->expire_time_ = now + std::chrono::seconds(3 * kTimeSlot);
+  timer_utils_.timer_list_.AdjustTimer(timer);
+
+  LOG_INFO("%s", "adjust timer once");
+}
+
+void WebServer::HandleTimer(Timer* timer, int sockfd) {
+  if (timer && timer->callback_) {
+    timer->callback_(&users_timer_[sockfd]);
+  }
+  if (timer) {
+    timer_utils_.timer_list_.DeleteTimer(timer);
+  }
+
+  LOG_INFO("close fd %d", users_timer_[sockfd].sockfd);
+  users_timer_[sockfd].timer = nullptr;
+}
+
+bool WebServer::HandleClientData() {
+  struct sockaddr_in client_address;
+  socklen_t client_addrlength = sizeof(client_address);
+
+  if (listen_trigger_mode_ == 0) {
+    // LT 模式
+    int connfd = accept(listen_fd_, reinterpret_cast<struct sockaddr*>(&client_address),
+                        &client_addrlength);
+    if (connfd < 0) {
+      LOG_ERROR("%s:errno is:%d", "accept error", errno);
+      return false;
     }
-}
-
-void WebServer::thread_pool()
-{
-    //线程池
-    m_pool = std::make_unique<threadpool<http_conn>>(m_actormodel, m_connPool, m_thread_num);
-}
-
-void WebServer::eventListen()
-{
-    //网络编程基础步骤
-    m_listenfd = socket(PF_INET, SOCK_STREAM, 0);
-    assert(m_listenfd >= 0);
-
-    //优雅关闭连接
-    if (0 == m_OPT_LINGER)
-    {
-        struct linger tmp = {0, 1};
-        setsockopt(m_listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+    if (HttpConnection::m_user_count >= kMaxFd) {
+      timer_utils_.ShowError(connfd, "Internal server busy");
+      LOG_ERROR("%s", "Internal server busy");
+      return false;
     }
-    else if (1 == m_OPT_LINGER)
-    {
-        struct linger tmp = {1, 1};
-        setsockopt(m_listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+    AddTimer(connfd, client_address);
+  } else {
+    // ET 模式
+    while (true) {
+      int connfd = accept(listen_fd_, reinterpret_cast<struct sockaddr*>(&client_address),
+                          &client_addrlength);
+      if (connfd < 0) {
+        LOG_ERROR("%s:errno is:%d", "accept error", errno);
+        break;
+      }
+      if (HttpConnection::m_user_count >= kMaxFd) {
+        timer_utils_.ShowError(connfd, "Internal server busy");
+        LOG_ERROR("%s", "Internal server busy");
+        break;
+      }
+      AddTimer(connfd, client_address);
     }
-
-    int ret = 0;
-    struct sockaddr_in address;
-    bzero(&address, sizeof(address));
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    address.sin_port = htons(m_port);
-
-    int flag = 1;
-    setsockopt(m_listenfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
-    ret = bind(m_listenfd, (struct sockaddr *)&address, sizeof(address));
-    assert(ret >= 0);
-    ret = listen(m_listenfd, 5);
-    assert(ret >= 0);
-
-    utils.init(TIMESLOT);
-
-    //epoll创建内核事件表
-    epoll_event events[MAX_EVENT_NUMBER];
-    m_epollfd = epoll_create(5);
-    assert(m_epollfd != -1);
-
-    utils.addfd(m_epollfd, m_listenfd, false, m_LISTENTrigmode);
-    http_conn::m_epollfd = m_epollfd;
-
-    ret = socketpair(PF_UNIX, SOCK_STREAM, 0, m_pipefd);
-    assert(ret != -1);
-    utils.setnonblocking(m_pipefd[1]);
-    utils.addfd(m_epollfd, m_pipefd[0], false, 0);
-
-    utils.addsig(SIGPIPE, SIG_IGN);
-    utils.addsig(SIGALRM, utils.sig_handler, false);
-    utils.addsig(SIGTERM, utils.sig_handler, false);
-
-    alarm(TIMESLOT);
-
-    //工具类,信号和描述符基础操作
-    Utils::u_pipefd = m_pipefd;
-    Utils::u_epollfd = m_epollfd;
+    return false;
+  }
+  return true;
 }
 
-void WebServer::timer(int connfd, struct sockaddr_in client_address)
-{
-    m_users[connfd].init(connfd, client_address, const_cast<char *>(m_root.c_str()), m_CONNTrigmode, m_close_log, m_user, m_passWord, m_databaseName);
+bool WebServer::HandleSignal(bool& timeout, bool& stop_server) {
+  int ret = 0;
+  int sig;
+  char signals[1024];
+  ret = recv(pipe_fd_[0], signals, sizeof(signals), 0);
 
-    //初始化client_data数据
-    //创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
-    m_users_timer[connfd].address = client_address;
-    m_users_timer[connfd].sockfd = connfd;
-    util_timer *timer = new util_timer;
-    timer->user_data = &m_users_timer[connfd];
-    timer->cb_func = cb_func;
-    time_t cur = time(NULL);
-    timer->expire = cur + 3 * TIMESLOT;
-    m_users_timer[connfd].timer = timer;
-    utils.m_timer_lst.add_timer(timer);
-}
-
-//若有数据传输，则将定时器往后延迟3个单位
-//并对新的定时器在链表上的位置进行调整
-void WebServer::adjust_timer(util_timer *timer)
-{
-    time_t cur = time(NULL);
-    timer->expire = cur + 3 * TIMESLOT;
-    utils.m_timer_lst.adjust_timer(timer);
-
-    LOG_INFO("%s", "adjust timer once");
-}
-
-void WebServer::deal_timer(util_timer *timer, int sockfd)
-{
-    timer->cb_func(&m_users_timer[sockfd]);
-    if (timer)
-    {
-        utils.m_timer_lst.del_timer(timer);
-    }
-
-    LOG_INFO("close fd %d", m_users_timer[sockfd].sockfd);
-    m_users_timer[sockfd].timer = nullptr;
-}
-
-bool WebServer::dealclientdata()
-{
-    struct sockaddr_in client_address;
-    socklen_t client_addrlength = sizeof(client_address);
-    if (0 == m_LISTENTrigmode)
-    {
-        int connfd = accept(m_listenfd, (struct sockaddr *)&client_address, &client_addrlength);
-        if (connfd < 0)
-        {
-            LOG_ERROR("%s:errno is:%d", "accept error", errno);
-            return false;
+  if (ret == -1) {
+    return false;
+  } else if (ret == 0) {
+    return false;
+  } else {
+    for (int i = 0; i < ret; ++i) {
+      switch (signals[i]) {
+        case SIGALRM: {
+          timeout = true;
+          break;
         }
-        if (http_conn::m_user_count >= MAX_FD)
-        {
-            utils.show_error(connfd, "Internal server busy");
-            LOG_ERROR("%s", "Internal server busy");
-            return false;
+        case SIGTERM: {
+          stop_server = true;
+          break;
         }
-        timer(connfd, client_address);
+      }
     }
-
-    else
-    {
-        while (1)
-        {
-            int connfd = accept(m_listenfd, (struct sockaddr *)&client_address, &client_addrlength);
-            if (connfd < 0)
-            {
-                LOG_ERROR("%s:errno is:%d", "accept error", errno);
-                break;
-            }
-            if (http_conn::m_user_count >= MAX_FD)
-            {
-                utils.show_error(connfd, "Internal server busy");
-                LOG_ERROR("%s", "Internal server busy");
-                break;
-            }
-            timer(connfd, client_address);
-        }
-        return false;
-    }
-    return true;
+  }
+  return true;
 }
 
-bool WebServer::dealwithsignal(bool &timeout, bool &stop_server)
-{
-    int ret = 0;
-    int sig;
-    char signals[1024];
-    ret = recv(m_pipefd[0], signals, sizeof(signals), 0);
-    if (ret == -1)
-    {
-        return false;
+void WebServer::HandleRead(int sockfd) {
+  Timer* timer = users_timer_[sockfd].timer;
+
+  // Reactor 模型
+  if (actor_model_ == 1) {
+    if (timer) {
+      AdjustTimer(timer);
     }
-    else if (ret == 0)
-    {
-        return false;
-    }
-    else
-    {
-        for (int i = 0; i < ret; ++i)
-        {
-            switch (signals[i])
-            {
-            case SIGALRM:
-            {
-                timeout = true;
-                break;
-            }
-            case SIGTERM:
-            {
-                stop_server = true;
-                break;
-            }
-            }
+
+    // 将读事件添加到请求队列
+    thread_pool_->Append(std::shared_ptr<HttpConnection>(&users_[sockfd], [](HttpConnection*){}), 0);
+
+    while (true) {
+      if (users_[sockfd].improv == 1) {
+        if (users_[sockfd].timer_flag == 1) {
+          HandleTimer(timer, sockfd);
+          users_[sockfd].timer_flag = 0;
         }
+        users_[sockfd].improv = 0;
+        break;
+      }
     }
-    return true;
+  } else {
+    // Proactor 模型
+    if (users_[sockfd].read_once()) {
+      LOG_INFO("deal with the client(%s)",
+               inet_ntoa(users_[sockfd].get_address()->sin_addr));
+
+      // 将读事件添加到请求队列
+      thread_pool_->AppendProactor(std::shared_ptr<HttpConnection>(&users_[sockfd], [](HttpConnection*){}));
+
+      if (timer) {
+        AdjustTimer(timer);
+      }
+    } else {
+      HandleTimer(timer, sockfd);
+    }
+  }
 }
 
-void WebServer::dealwithread(int sockfd)
-{
-    util_timer *timer = m_users_timer[sockfd].timer;
+void WebServer::HandleWrite(int sockfd) {
+  Timer* timer = users_timer_[sockfd].timer;
 
-    //reactor
-    if (1 == m_actormodel)
-    {
-        if (timer)
-        {
-            adjust_timer(timer);
-        }
-
-        //若监测到读事件，将该事件放入请求队列
-        m_pool->append(&m_users[sockfd], 0);
-
-        while (true)
-        {
-            if (1 == m_users[sockfd].improv)
-            {
-                if (1 == m_users[sockfd].timer_flag)
-                {
-                    deal_timer(timer, sockfd);
-                    m_users[sockfd].timer_flag = 0;
-                }
-                m_users[sockfd].improv = 0;
-                break;
-            }
-        }
+  // Reactor 模型
+  if (actor_model_ == 1) {
+    if (timer) {
+      AdjustTimer(timer);
     }
-    else
-    {
-        //proactor
-        if (m_users[sockfd].read_once())
-        {
-            LOG_INFO("deal with the client(%s)", inet_ntoa(m_users[sockfd].get_address()->sin_addr));
 
-            //若监测到读事件，将该事件放入请求队列
-            m_pool->append_p(&m_users[sockfd]);
+    thread_pool_->Append(std::shared_ptr<HttpConnection>(&users_[sockfd], [](HttpConnection*){}), 1);
 
-            if (timer)
-            {
-                adjust_timer(timer);
-            }
+    while (true) {
+      if (users_[sockfd].improv == 1) {
+        if (users_[sockfd].timer_flag == 1) {
+          HandleTimer(timer, sockfd);
+          users_[sockfd].timer_flag = 0;
         }
-        else
-        {
-            deal_timer(timer, sockfd);
-        }
+        users_[sockfd].improv = 0;
+        break;
+      }
     }
+  } else {
+    // Proactor 模型
+    if (users_[sockfd].write()) {
+      LOG_INFO("send data to the client(%s)",
+               inet_ntoa(users_[sockfd].get_address()->sin_addr));
+
+      if (timer) {
+        AdjustTimer(timer);
+      }
+    } else {
+      HandleTimer(timer, sockfd);
+    }
+  }
 }
 
-void WebServer::dealwithwrite(int sockfd)
-{
-    util_timer *timer = m_users_timer[sockfd].timer;
-    //reactor
-    if (1 == m_actormodel)
-    {
-        if (timer)
-        {
-            adjust_timer(timer);
-        }
+void WebServer::EventLoop() {
+  bool timeout = false;
+  bool stop_server = false;
 
-        m_pool->append(&m_users[sockfd], 1);
-
-        while (true)
-        {
-            if (1 == m_users[sockfd].improv)
-            {
-                if (1 == m_users[sockfd].timer_flag)
-                {
-                    deal_timer(timer, sockfd);
-                    m_users[sockfd].timer_flag = 0;
-                }
-                m_users[sockfd].improv = 0;
-                break;
-            }
-        }
+  while (!stop_server) {
+    int number = epoll_wait(epoll_fd_, events_, kMaxEventNumber, -1);
+    if (number < 0 && errno != EINTR) {
+      LOG_ERROR("%s", "epoll failure");
+      break;
     }
-    else
-    {
-        //proactor
-        if (m_users[sockfd].write())
-        {
-            LOG_INFO("send data to the client(%s)", inet_ntoa(m_users[sockfd].get_address()->sin_addr));
 
-            if (timer)
-            {
-                adjust_timer(timer);
-            }
+    for (int i = 0; i < number; i++) {
+      int sockfd = events_[i].data.fd;
+
+      // 处理新的客户端连接
+      if (sockfd == listen_fd_) {
+        bool flag = HandleClientData();
+        if (flag == false) {
+          continue;
         }
-        else
-        {
-            deal_timer(timer, sockfd);
+      } else if (events_[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+        // 服务器关闭连接，移除定时器
+        Timer* timer = users_timer_[sockfd].timer;
+        HandleTimer(timer, sockfd);
+      }
+      // 处理信号
+      else if ((sockfd == pipe_fd_[0]) && (events_[i].events & EPOLLIN)) {
+        bool flag = HandleSignal(timeout, stop_server);
+        if (flag == false) {
+          LOG_ERROR("%s", "dealclientdata failure");
         }
+      }
+      // 处理客户端数据
+      else if (events_[i].events & EPOLLIN) {
+        HandleRead(sockfd);
+      } else if (events_[i].events & EPOLLOUT) {
+        HandleWrite(sockfd);
+      }
     }
+
+    if (timeout) {
+      timer_utils_.HandleTimer();
+      LOG_INFO("%s", "timer tick");
+      timeout = false;
+    }
+  }
 }
 
-void WebServer::eventLoop()
-{
-    bool timeout = false;
-    bool stop_server = false;
+}  // namespace tinywebserver
 
-    while (!stop_server)
-    {
-        int number = epoll_wait(m_epollfd, events, MAX_EVENT_NUMBER, -1);
-        if (number < 0 && errno != EINTR)
-        {
-            LOG_ERROR("%s", "epoll failure");
-            break;
-        }
-
-        for (int i = 0; i < number; i++)
-        {
-            int sockfd = events[i].data.fd;
-
-            //处理新到的客户连接
-            if (sockfd == m_listenfd)
-            {
-                bool flag = dealclientdata();
-                if (false == flag)
-                    continue;
-            }
-            else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-            {
-                //服务器端关闭连接，移除对应的定时器
-                util_timer *timer = m_users_timer[sockfd].timer;
-                deal_timer(timer, sockfd);
-            }
-            //处理信号
-            else if ((sockfd == m_pipefd[0]) && (events[i].events & EPOLLIN))
-            {
-                bool flag = dealwithsignal(timeout, stop_server);
-                if (false == flag)
-                    LOG_ERROR("%s", "dealclientdata failure");
-            }
-            //处理客户连接上接收到的数据
-            else if (events[i].events & EPOLLIN)
-            {
-                dealwithread(sockfd);
-            }
-            else if (events[i].events & EPOLLOUT)
-            {
-                dealwithwrite(sockfd);
-            }
-        }
-        if (timeout)
-        {
-            utils.timer_handler();
-
-            LOG_INFO("%s", "timer tick");
-
-            timeout = false;
-        }
-    }
-}

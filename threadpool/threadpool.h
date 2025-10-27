@@ -1,155 +1,209 @@
-#ifndef THREADPOOL_H
-#define THREADPOOL_H
+// Copyright 2025 TinyWebServer
+// 使用生产者-消费者模式处理请求的线程池
+// 遵循 Google C++ 编码规范
 
-#include <list>
+#ifndef TINYWEBSERVER_THREADPOOL_THREADPOOL_H_
+#define TINYWEBSERVER_THREADPOOL_THREADPOOL_H_
+
+#include <atomic>
+#include <condition_variable>
 #include <cstdio>
 #include <exception>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <stdexcept>
 #include <thread>
 #include <vector>
-#include <memory>
-#include "../lock/locker.h"
+
 #include "../CGImysql/sql_connection_pool.h"
 
+namespace tinywebserver {
+
+// 用于处理并发请求的线程池模板类。
+// 使用生产者-消费者模式与工作队列。
+// @tparam T 要处理的任务/请求类型
 template <typename T>
-class threadpool
-{
-public:
-    /*thread_number是线程池中线程的数量，max_requests是请求队列中最多允许的、等待处理的请求的数量*/
-    threadpool(int actor_model, connection_pool *connPool, int thread_number = 8, int max_request = 10000);
-    ~threadpool();
-    bool append(T *request, int state);
-    bool append_p(T *request);
+class ThreadPool {
+ public:
+  // 构造线程池。
+  // @param actor_model 并发模型 (0=Proactor, 1=Reactor)
+  // @param conn_pool 数据库连接池
+  // @param thread_number 工作线程数量
+  // @param max_requests 队列中最大待处理请求数
+  // @throws std::invalid_argument 如果参数无效
+  ThreadPool(int actor_model, ConnectionPool* conn_pool, int thread_number = 8,
+             int max_requests = 10000);
 
-private:
-    /*工作线程运行的函数，它不断从工作队列中取出任务并执行之*/
-    void run();
+  ~ThreadPool();
 
-private:
-    int m_thread_number;                  //线程池中的线程数
-    int m_max_requests;                   //请求队列中允许的最大请求数
-    std::vector<std::thread> m_threads;   //线程池数组
-    std::list<T *> m_workqueue;           //请求队列
-    locker m_queuelocker;                 //保护请求队列的互斥锁
-    sem m_queuestat;                      //是否有任务需要处理
-    connection_pool *m_connPool;          //数据库
-    int m_actor_model;                    //模型切换
-    bool m_stop;                          //停止标志
+  // 禁用拷贝和移动操作
+  ThreadPool(const ThreadPool&) = delete;
+  ThreadPool& operator=(const ThreadPool&) = delete;
+  ThreadPool(ThreadPool&&) = delete;
+  ThreadPool& operator=(ThreadPool&&) = delete;
+
+  // 向工作队列添加请求 (Reactor 模式)。
+  // @param request 指向请求的共享指针
+  // @param state 请求状态 (0=读, 1=写)
+  // @return 如果请求成功入队返回 true，否则返回 false
+  bool Append(std::shared_ptr<T> request, int state);
+
+  // 向工作队列添加请求 (Proactor 模式)。
+  // @param request 指向请求的共享指针
+  // @return 如果请求成功入队返回 true，否则返回 false
+  bool AppendProactor(std::shared_ptr<T> request);
+
+ private:
+  // 工作线程函数。
+  // 持续处理工作队列中的请求。
+  void Run();
+
+  int thread_number_;                       // 线程数量
+  int max_requests_;                        // 最大待处理请求数
+  std::vector<std::thread> threads_;        // 工作线程数组
+  std::queue<std::shared_ptr<T>> work_queue_;  // 请求队列
+  std::mutex queue_mutex_;                  // 队列保护互斥锁
+  std::condition_variable queue_cond_;      // 信号通知条件变量
+  ConnectionPool* conn_pool_;               // 数据库连接池
+  int actor_model_;                         // 并发模型
+  std::atomic<bool> stop_;                  // 停止标志
 };
 
+// 模板实现
+
 template <typename T>
-threadpool<T>::threadpool(int actor_model, connection_pool *connPool, int thread_number, int max_requests)
-    : m_actor_model(actor_model),
-      m_thread_number(thread_number),
-      m_max_requests(max_requests),
-      m_connPool(connPool),
-      m_stop(false)
-{
-    if (thread_number <= 0 || max_requests <= 0)
-        throw std::exception();
+ThreadPool<T>::ThreadPool(int actor_model, ConnectionPool* conn_pool,
+                          int thread_number, int max_requests)
+    : actor_model_(actor_model),
+      thread_number_(thread_number),
+      max_requests_(max_requests),
+      conn_pool_(conn_pool),
+      stop_(false) {
+  if (thread_number <= 0 || max_requests <= 0) {
+    throw std::invalid_argument(
+        "ThreadPool: thread_number and max_requests must be positive");
+  }
 
-    m_threads.reserve(m_thread_number);
+  if (conn_pool == nullptr) {
+    throw std::invalid_argument("ThreadPool: conn_pool cannot be null");
+  }
 
-    for (int i = 0; i < thread_number; ++i)
-    {
-        m_threads.emplace_back([this]() { this->run(); });
-    }
+  threads_.reserve(thread_number_);
+
+  for (int i = 0; i < thread_number; ++i) {
+    threads_.emplace_back([this]() { this->Run(); });
+  }
 }
 
 template <typename T>
-threadpool<T>::~threadpool()
-{
-    m_stop = true;
-    for (auto &thread : m_threads)
-    {
-        if (thread.joinable())
-        {
-            thread.join();
-        }
+ThreadPool<T>::~ThreadPool() {
+  stop_ = true;
+  queue_cond_.notify_all();
+
+  for (auto& thread : threads_) {
+    if (thread.joinable()) {
+      thread.join();
     }
+  }
 }
 
 template <typename T>
-bool threadpool<T>::append(T *request, int state)
-{
-    m_queuelocker.lock();
-    if (m_workqueue.size() >= m_max_requests)
-    {
-        m_queuelocker.unlock();
-        return false;
+bool ThreadPool<T>::Append(std::shared_ptr<T> request, int state) {
+  if (!request) {
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (work_queue_.size() >= static_cast<size_t>(max_requests_)) {
+      return false;
     }
+
     request->m_state = state;
-    m_workqueue.push_back(request);
-    m_queuelocker.unlock();
-    m_queuestat.post();
-    return true;
+    work_queue_.push(request);
+  }
+
+  queue_cond_.notify_one();
+  return true;
 }
 
 template <typename T>
-bool threadpool<T>::append_p(T *request)
-{
-    m_queuelocker.lock();
-    if (m_workqueue.size() >= m_max_requests)
-    {
-        m_queuelocker.unlock();
-        return false;
+bool ThreadPool<T>::AppendProactor(std::shared_ptr<T> request) {
+  if (!request) {
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (work_queue_.size() >= static_cast<size_t>(max_requests_)) {
+      return false;
     }
-    m_workqueue.push_back(request);
-    m_queuelocker.unlock();
-    m_queuestat.post();
-    return true;
+
+    work_queue_.push(request);
+  }
+
+  queue_cond_.notify_one();
+  return true;
 }
 
 template <typename T>
-void threadpool<T>::run()
-{
-    while (!m_stop)
+void ThreadPool<T>::Run() {
+  while (!stop_) {
+    std::shared_ptr<T> request;
     {
-        m_queuestat.wait();
-        m_queuelocker.lock();
-        if (m_workqueue.empty())
-        {
-            m_queuelocker.unlock();
-            continue;
-        }
-        T *request = m_workqueue.front();
-        m_workqueue.pop_front();
-        m_queuelocker.unlock();
-        if (!request)
-            continue;
-        if (1 == m_actor_model)
-        {
-            if (0 == request->m_state)
-            {
-                if (request->read_once())
-                {
-                    request->improv = 1;
-                    connectionRAII mysqlcon(&request->mysql, m_connPool);
-                    request->process();
-                }
-                else
-                {
-                    request->improv = 1;
-                    request->timer_flag = 1;
-                }
-            }
-            else
-            {
-                if (request->write())
-                {
-                    request->improv = 1;
-                }
-                else
-                {
-                    request->improv = 1;
-                    request->timer_flag = 1;
-                }
-            }
-        }
-        else
-        {
-            connectionRAII mysqlcon(&request->mysql, m_connPool);
+      std::unique_lock<std::mutex> lock(queue_mutex_);
+      queue_cond_.wait(lock,
+                       [this]() { return stop_ || !work_queue_.empty(); });
+
+      if (stop_ && work_queue_.empty()) {
+        break;
+      }
+
+      if (!work_queue_.empty()) {
+        request = work_queue_.front();
+        work_queue_.pop();
+      }
+    }
+
+    if (!request) {
+      continue;
+    }
+
+    try {
+      if (actor_model_ == 1) {
+        // Reactor 模式：处理读/写事件
+        if (request->m_state == 0) {
+          // 读事件
+          if (request->read_once()) {
+            request->improv = 1;
+            ConnectionRAII mysql_conn(&request->mysql, conn_pool_);
             request->process();
+          } else {
+            request->improv = 1;
+            request->timer_flag = 1;
+          }
+        } else {
+          // 写事件
+          if (request->write()) {
+            request->improv = 1;
+          } else {
+            request->improv = 1;
+            request->timer_flag = 1;
+          }
         }
+      } else {
+        // Proactor 模式：处理请求
+        ConnectionRAII mysql_conn(&request->mysql, conn_pool_);
+        request->process();
+      }
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "Thread pool task exception: %s\n", e.what());
     }
+  }
 }
-#endif
+
+}  // namespace tinywebserver
+
+#endif  // TINYWEBSERVER_THREADPOOL_THREADPOOL_H_
+

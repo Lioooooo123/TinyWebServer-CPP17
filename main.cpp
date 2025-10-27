@@ -1,43 +1,56 @@
-#include "config.h"
+// Copyright 2025 TinyWebServer
+// Main entry point for TinyWebServer application
+// Follows Google C++ Style Guide
 
+#include "config.h"
+#include "webserver.h"
+
+#include <iostream>
 #include <string>
 
-int main(int argc, char *argv[])
-{
-    //需要修改的数据库信息,登录名,密码,库名
-    std::string user = "root";
-    std::string passwd = "root";
-    std::string databasename = "Liodb";
+int main(int argc, char* argv[]) {
+  // Database configuration - should be modified according to your setup
+  const std::string kDbUser = "root";
+  const std::string kDbPassword = "root";
+  const std::string kDbName = "Liodb";
 
-    //命令行解析
-    Config config;
-    config.parse_arg(argc, argv);
+  try {
+    // Parse command-line arguments and configuration file
+    tinywebserver::Config config;
+    config.ParseArgs(argc, argv);
 
-    WebServer server;
+    // Validate configuration
+    if (!config.Validate()) {
+      std::cerr << "Invalid configuration. Exiting." << std::endl;
+      return 1;
+    }
 
-    //初始化
-    server.init(config.PORT, user, passwd, databasename, config.LOGWrite, 
-                config.OPT_LINGER, config.TRIGMode,  config.sql_num,  config.thread_num, 
-                config.close_log, config.actor_model);
-    
+    // Print configuration for debugging
+    config.Print();
 
-    //日志
-    server.log_write();
+    // Initialize web server with configuration
+    tinywebserver::WebServer server;
+    server.Init(
+        config.port(), kDbUser, kDbPassword, kDbName,
+        config.log_write_mode(), config.opt_linger(), 
+        config.trigger_mode(), config.sql_connection_num(),
+        config.thread_num(), config.close_log(), 
+        config.actor_model());
 
-    //数据库
-    server.sql_pool();
+    // Initialize subsystems
+    server.InitLog();
+    server.InitSqlPool();
+    server.InitThreadPool();
+    server.SetTriggerMode();
+    server.StartListen();
 
-    //线程池
-    server.thread_pool();
+    // Run the event loop
+    server.EventLoop();
 
-    //触发模式
-    server.trig_mode();
+  } catch (const std::exception& e) {
+    std::cerr << "Fatal error: " << e.what() << std::endl;
+    return 1;
+  }
 
-    //监听
-    server.eventListen();
-
-    //运行
-    server.eventLoop();
-
-    return 0;
+  return 0;
 }

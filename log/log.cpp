@@ -1,164 +1,215 @@
-#include <string.h>
-#include <time.h>
-#include <sys/time.h>
-#include <stdarg.h>
+// Copyright 2025 TinyWebServer
+// 异步日志系统的实现
+
 #include "log.h"
-#include <pthread.h>
-using namespace std;
 
-Log::Log()
-{
-    m_count = 0;
-    m_is_async = false;
-}
+#include <sys/time.h>
+#include <cstring>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
-Log::~Log()
-{
-    if (m_fp != NULL)
-    {
-        fclose(m_fp);
+namespace tinywebserver {
+
+Logger::Logger()
+    : split_lines_(0),
+      log_buf_size_(0),
+      count_(0),
+      today_(0),
+      is_async_(false),
+      close_log_(0) {}
+
+Logger::~Logger() {
+  if (fp_) {
+    std::fflush(fp_.get());
+  }
+  
+  if (async_thread_ && async_thread_->joinable()) {
+    // 通过推入空字符串来通知异步线程停止
+    if (log_queue_) {
+      log_queue_->Push("");
     }
+    async_thread_->join();
+  }
 }
-//异步需要设置阻塞队列的长度，同步不需要设置
-bool Log::init(const char *file_name, int close_log, int log_buf_size, int split_lines, int max_queue_size)
-{
-    //如果设置了max_queue_size,则设置为异步
-    if (max_queue_size >= 1)
-    {
-        m_is_async = true;
-        m_log_queue = new block_queue<string>(max_queue_size);
-        pthread_t tid;
-        //flush_log_thread为回调函数,这里表示创建线程异步写日志
-        pthread_create(&tid, NULL, flush_log_thread, NULL);
+
+bool Logger::Init(const std::string& file_name, int close_log,
+                  int log_buf_size, int split_lines, int max_queue_size) {
+  // 如果指定了队列大小，设置异步模式
+  if (max_queue_size >= 1) {
+    is_async_ = true;
+    log_queue_ = std::make_unique<BlockQueue<std::string>>(max_queue_size);
+    
+    // 创建异步写入线程
+    async_thread_ = std::make_unique<std::thread>([this]() {
+      this->AsyncWriteLog();
+    });
+  }
+
+  close_log_ = close_log;
+  log_buf_size_ = log_buf_size;
+  buf_ = std::make_unique<char[]>(log_buf_size);
+  std::memset(buf_.get(), '\0', log_buf_size);
+  split_lines_ = split_lines;
+
+  // 获取当前时间
+  time_t t = time(nullptr);
+  struct tm* sys_tm = localtime(&t);
+  struct tm my_tm = *sys_tm;
+
+  // 解析文件路径
+  std::filesystem::path file_path(file_name);
+  std::filesystem::path parent_path = file_path.parent_path();
+  std::filesystem::path filename = file_path.filename();
+
+  // 生成带日期的日志文件名
+  std::ostringstream log_full_name;
+  if (parent_path.empty()) {
+    log_full_name << my_tm.tm_year + 1900 << "_"
+                  << std::setfill('0') << std::setw(2) << my_tm.tm_mon + 1 << "_"
+                  << std::setfill('0') << std::setw(2) << my_tm.tm_mday << "_"
+                  << filename.string();
+    log_name_ = filename;
+  } else {
+    log_full_name << parent_path.string() << "/"
+                  << my_tm.tm_year + 1900 << "_"
+                  << std::setfill('0') << std::setw(2) << my_tm.tm_mon + 1 << "_"
+                  << std::setfill('0') << std::setw(2) << my_tm.tm_mday << "_"
+                  << filename.string();
+    dir_name_ = parent_path;
+    log_name_ = filename;
+    
+    // 如果目录不存在则创建
+    std::filesystem::create_directories(parent_path);
+  }
+
+  today_ = my_tm.tm_mday;
+
+  // 打开日志文件
+  fp_.reset(std::fopen(log_full_name.str().c_str(), "a"));
+  if (!fp_) {
+    return false;
+  }
+
+  return true;
+}
+
+void Logger::WriteLog(LogLevel level, const char* format, ...) {
+  struct timeval now = {0, 0};
+  gettimeofday(&now, nullptr);
+  time_t t = now.tv_sec;
+  struct tm* sys_tm = localtime(&t);
+  struct tm my_tm = *sys_tm;
+
+  // 获取级别字符串
+  const char* level_str = GetLevelString(level);
+
+  // 处理日志切分
+  std::unique_lock<std::mutex> lock(mutex_);
+  count_++;
+
+  if (today_ != my_tm.tm_mday || count_ % split_lines_ == 0) {
+    std::fflush(fp_.get());
+    fp_.reset();
+
+    std::ostringstream new_log;
+    std::ostringstream tail;
+    tail << my_tm.tm_year + 1900 << "_"
+         << std::setfill('0') << std::setw(2) << my_tm.tm_mon + 1 << "_"
+         << std::setfill('0') << std::setw(2) << my_tm.tm_mday << "_";
+
+    if (today_ != my_tm.tm_mday) {
+      if (dir_name_.empty()) {
+        new_log << tail.str() << log_name_.string();
+      } else {
+        new_log << dir_name_.string() << "/" << tail.str() << log_name_.string();
+      }
+      today_ = my_tm.tm_mday;
+      count_ = 0;
+    } else {
+      if (dir_name_.empty()) {
+        new_log << tail.str() << log_name_.string() << "." 
+                << count_ / split_lines_;
+      } else {
+        new_log << dir_name_.string() << "/" << tail.str() 
+                << log_name_.string() << "." << count_ / split_lines_;
+      }
     }
     
-    m_close_log = close_log;
-    m_log_buf_size = log_buf_size;
-    m_buf = new char[m_log_buf_size];
-    memset(m_buf, '\0', m_log_buf_size);
-    m_split_lines = split_lines;
+    fp_.reset(std::fopen(new_log.str().c_str(), "a"));
+  }
 
-    time_t t = time(NULL);
-    struct tm *sys_tm = localtime(&t);
-    struct tm my_tm = *sys_tm;
+  lock.unlock();
 
- 
-    const char *p = strrchr(file_name, '/');
-    char log_full_name[256] = {0};
+  // 格式化日志消息
+  va_list valst;
+  va_start(valst, format);
 
-    if (p == NULL)
-    {
-        snprintf(log_full_name, 255, "%d_%02d_%02d_%s", my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, file_name);
-    }
-    else
-    {
-        strcpy(log_name, p + 1);
-        strncpy(dir_name, file_name, p - file_name + 1);
-        snprintf(log_full_name, 255, "%s%d_%02d_%02d_%s", dir_name, my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, log_name);
-    }
+  std::string log_str;
+  lock.lock();
 
-    m_today = my_tm.tm_mday;
-    
-    m_fp = fopen(log_full_name, "a");
-    if (m_fp == NULL)
-    {
-        return false;
-    }
+  // 写入时间戳和级别
+  int n = std::snprintf(buf_.get(), 48, "%d-%02d-%02d %02d:%02d:%02d.%06ld %s ",
+                        my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday,
+                        my_tm.tm_hour, my_tm.tm_min, my_tm.tm_sec, 
+                        now.tv_usec, level_str);
 
-    return true;
+  // 写入实际的日志内容
+  int m = std::vsnprintf(buf_.get() + n, log_buf_size_ - n - 1, format, valst);
+  buf_[n + m] = '\n';
+  buf_[n + m + 1] = '\0';
+  log_str = buf_.get();
+
+  lock.unlock();
+
+  // 写入异步队列或直接写入文件
+  if (is_async_ && log_queue_ && !log_queue_->Full()) {
+    log_queue_->Push(log_str);
+  } else {
+    lock.lock();
+    std::fputs(log_str.c_str(), fp_.get());
+    lock.unlock();
+  }
+
+  va_end(valst);
 }
 
-void Log::write_log(int level, const char *format, ...)
-{
-    struct timeval now = {0, 0};
-    gettimeofday(&now, NULL);
-    time_t t = now.tv_sec;
-    struct tm *sys_tm = localtime(&t);
-    struct tm my_tm = *sys_tm;
-    char s[16] = {0};
-    switch (level)
-    {
-    case 0:
-        strcpy(s, "[debug]:");
-        break;
-    case 1:
-        strcpy(s, "[info]:");
-        break;
-    case 2:
-        strcpy(s, "[warn]:");
-        break;
-    case 3:
-        strcpy(s, "[erro]:");
-        break;
+void Logger::Flush() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (fp_) {
+    std::fflush(fp_.get());
+  }
+}
+
+void Logger::AsyncWriteLog() {
+  std::string single_log;
+  // 从队列中弹出日志并写入文件
+  while (log_queue_->Pop(single_log)) {
+    // 空字符串表示关闭信号
+    if (single_log.empty()) {
+      break;
+    }
+    
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fp_) {
+      std::fputs(single_log.c_str(), fp_.get());
+    }
+  }
+}
+
+const char* Logger::GetLevelString(LogLevel level) const {
+  switch (level) {
+    case LogLevel::kDebug:
+      return "[DEBUG]:";
+    case LogLevel::kInfo:
+      return "[INFO]:";
+    case LogLevel::kWarn:
+      return "[WARN]:";
+    case LogLevel::kError:
+      return "[ERROR]:";
     default:
-        strcpy(s, "[info]:");
-        break;
-    }
-    //写入一个log，对m_count++, m_split_lines最大行数
-    m_mutex.lock();
-    m_count++;
-
-    if (m_today != my_tm.tm_mday || m_count % m_split_lines == 0) //everyday log
-    {
-        
-        char new_log[256] = {0};
-        fflush(m_fp);
-        fclose(m_fp);
-        char tail[16] = {0};
-       
-        snprintf(tail, 16, "%d_%02d_%02d_", my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday);
-       
-        if (m_today != my_tm.tm_mday)
-        {
-            snprintf(new_log, 255, "%s%s%s", dir_name, tail, log_name);
-            m_today = my_tm.tm_mday;
-            m_count = 0;
-        }
-        else
-        {
-            snprintf(new_log, 255, "%s%s%s.%lld", dir_name, tail, log_name, m_count / m_split_lines);
-        }
-        m_fp = fopen(new_log, "a");
-    }
- 
-    m_mutex.unlock();
-
-    va_list valst;
-    va_start(valst, format);
-
-    string log_str;
-    m_mutex.lock();
-
-    //写入的具体时间内容格式
-    int n = snprintf(m_buf, 48, "%d-%02d-%02d %02d:%02d:%02d.%06ld %s ",
-                     my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday,
-                     my_tm.tm_hour, my_tm.tm_min, my_tm.tm_sec, now.tv_usec, s);
-    
-    int m = vsnprintf(m_buf + n, m_log_buf_size - n - 1, format, valst);
-    m_buf[n + m] = '\n';
-    m_buf[n + m + 1] = '\0';
-    log_str = m_buf;
-
-    m_mutex.unlock();
-
-    if (m_is_async && !m_log_queue->full())
-    {
-        m_log_queue->push(log_str);
-    }
-    else
-    {
-        m_mutex.lock();
-        fputs(log_str.c_str(), m_fp);
-        m_mutex.unlock();
-    }
-
-    va_end(valst);
+      return "[INFO]:";
+  }
 }
 
-void Log::flush(void)
-{
-    m_mutex.lock();
-    //强制刷新写入流缓冲区
-    fflush(m_fp);
-    m_mutex.unlock();
-}
+}  // namespace tinywebserver
