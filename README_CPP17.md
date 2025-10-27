@@ -59,7 +59,7 @@ make clean
 make server
 
 # 使用配置文件运行
-./server -f server.conf
+./server -f config/server.conf
 
 # 使用命令行参数运行
 ./server -p 9006 -t 8 -s 8
@@ -132,13 +132,16 @@ string databasename = "yourdb";
 ├── timer/             # 定时器
 ├── root/              # 网站资源文件
 ├── test_pressure/     # 压力测试工具
+├── config/            # 配置文件目录
+│   └── server.conf    # 配置文件示例 (新增)
+├── docs/              # 文档目录
+│   ├── UPGRADE_NOTES.md      # 升级说明 (新增)
+│   └── COMPLETION_REPORT.md  # 完成报告 (新增)
 ├── config.h/cpp       # 配置管理 (新增文件加载功能)
 ├── webserver.h/cpp    # 服务器核心 (现代化实现)
 ├── main.cpp           # 主程序
 ├── makefile           # 构建文件 (C++17)
-├── server.conf        # 配置文件示例 (新增)
-├── UPGRADE_NOTES.md   # 升级说明 (新增)
-└── COMPLETION_REPORT.md # 完成报告 (新增)
+└── README_CPP17.md    # 本文档
 ```
 
 ## 🔧 技术细节
@@ -163,15 +166,15 @@ m_pool = std::make_unique<threadpool<http_conn>>(...);
 ```cpp
 // 新增配置文件加载功能
 Config config;
-config.load_from_file("server.conf");
+config.load_from_file("config/server.conf");
 config.parse_arg(argc, argv);  // 命令行参数优先级更高
 ```
 
 ## 📖 学习资源
 
 ### 推荐阅读
-- [UPGRADE_NOTES.md](UPGRADE_NOTES.md) - 详细的升级说明
-- [COMPLETION_REPORT.md](COMPLETION_REPORT.md) - 完整的升级报告
+- [docs/UPGRADE_NOTES.md](docs/UPGRADE_NOTES.md) - 详细的升级说明
+- [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) - 完整的升级报告
 - 《C++ Primer》第5版 - C++11/14 特性
 - 《Effective Modern C++》 - 现代 C++ 最佳实践
 
@@ -214,7 +217,7 @@ config.parse_arg(argc, argv);  // 命令行参数优先级更高
 ## 📮 联系方式
 
 - GitHub: [@Lioooooo123](https://github.com/Lioooooo123)
-- Email: lioooooo123@example.com
+- Email: Liohiii4@outlook.com
 
 ---
 
