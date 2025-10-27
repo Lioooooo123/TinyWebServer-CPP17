@@ -47,8 +47,42 @@ Linux下C++轻量级Web服务器的**现代化重构版本**，基于 [qinguoyi/
 ### 编译要求
 - **编译器**: g++ 7.0+ 或 clang++ 5.0+ (支持 C++17)
 - **依赖库**: pthread, mysqlclient
+- **构建工具**: CMake 3.15+ (推荐) 或 Make
 
-### 编译运行
+### 方式一：使用 CMake 构建（推荐）⭐
+
+```bash
+# 克隆仓库
+git clone https://github.com/Lioooooo123/TinyWebServer-CPP17.git
+cd TinyWebServer-CPP17
+
+# 使用构建脚本（最简单）
+./cmake_build.sh              # Release 模式
+./cmake_build.sh -d           # Debug 模式
+./cmake_build.sh -c -d        # 清理并构建 Debug 模式
+
+# 运行
+cd build/bin
+./server -f ../../config/server.conf
+
+# 或手动使用 CMake
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
+cd bin
+./server
+```
+
+**CMake 优势**:
+- 🚀 自动检测依赖库
+- 📦 更好的 IDE 支持 (VS Code, CLion)
+- 🔧 并行编译更快
+- 🎯 规范的构建流程
+
+详细说明请查看：[CMake 迁移指南](docs/CMAKE_MIGRATION.md)
+
+### 方式二：使用 Make 构建（传统）
+
 ```bash
 # 克隆仓库
 git clone https://github.com/Lioooooo123/TinyWebServer-CPP17.git
@@ -59,7 +93,7 @@ make clean
 make server
 
 # 使用配置文件运行
-./server -f server.conf
+./server -f config/server.conf
 
 # 使用命令行参数运行
 ./server -p 9006 -t 8 -s 8

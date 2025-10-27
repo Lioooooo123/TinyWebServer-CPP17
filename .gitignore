@@ -4,6 +4,17 @@ server
 *.so
 *.a
 
+# CMake 构建文件
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+*.cmake
+!CMakeLists.txt
+
 # 日志文件
 *ServerLog*
 *.log
