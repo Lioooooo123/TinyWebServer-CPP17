@@ -488,10 +488,13 @@ bool HttpConnection::write() {
     temp = writev(sockfd_, iov_, iov_count_);
 
     if (temp < 0) {
+      // If the sending buffer is full, wait for the next EPOLLOUT event.
+      // For other errors, assume the connection is closed.
       if (errno == EAGAIN) {
         ModifyFd(m_epollfd, sockfd_, EPOLLOUT, trigger_mode_);
         return true;
       }
+      // Handle other errors, such as EPIPE, ECONNRESET, etc.
       Unmap();
       return false;
     }
