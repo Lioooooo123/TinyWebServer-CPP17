@@ -1,17 +1,164 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>awsl</title>
-    </head>
-    <body><br/>
-<br/>
-<div align="center"><font size="5"> <strong>你居然想看视频，不想关注我</strong></font></div>
-<br/>
-
-<br/>
-<br/>
-<div align="center"><video width="906" height="506" controls>
-    <source src="xxx.mp4" type="video/mp4">
-</video></div>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频播放 - TinyWebServer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .video-container {
+            max-width: 1200px;
+            padding: 40px 20px;
+        }
+        
+        .video-wrapper {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            margin: 30px 0;
+            background: #000;
+        }
+        
+        .video-wrapper video {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 20px;
+        }
+        
+        .fun-message {
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.2), rgba(0, 242, 254, 0.2));
+            border-radius: 16px;
+            margin: 30px 0;
+        }
+        
+        .fun-message h2 {
+            font-size: 1.8rem;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+        
+        .fun-message p {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+        
+        .video-info {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+        
+        .video-info h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .video-controls-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .control-item {
+            text-align: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 12px;
+        }
+        
+        .control-item .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+        
+        .control-item .label {
+            font-size: 0.85rem;
+            color: #718096;
+        }
+    </style>
+</head>
+<body>
+    <a href="javascript:history.back()" class="back-btn">←</a>
+    
+    <div class="container video-container">
+        <h1 class="title">🎬 视频播放</h1>
+        <p class="subtitle">享受高清视频体验</p>
+        
+        <div class="fun-message">
+            <h2>🎥 你选择了视频！</h2>
+            <p>其实下面的按钮都不能用嘤嘤嘤</p>
+        </div>
+        
+        <div class="video-wrapper">
+            <video controls preload="metadata" poster="">
+                <source src="xxx.mp4" type="video/mp4">
+                您的浏览器不支持视频播放。
+            </video>
+        </div>
+        
+        <div class="video-info">
+            <h3>📹 播放器功能</h3>
+            <div class="video-controls-info">
+                <div class="control-item">
+                    <div class="icon">▶️</div>
+                    <div class="label">播放/暂停</div>
+                </div>
+                <div class="control-item">
+                    <div class="icon">🔊</div>
+                    <div class="label">音量调节</div>
+                </div>
+                <div class="control-item">
+                    <div class="icon">⏩</div>
+                    <div class="label">快进/快退</div>
+                </div>
+                <div class="control-item">
+                    <div class="icon">⛶</div>
+                    <div class="label">全屏播放</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="javascript:history.back()" style="display: inline-block; padding: 15px 40px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
+                ← 返回选择
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        // 视频加载状态
+        const video = document.querySelector('video');
+        
+        video.addEventListener('loadeddata', function() {
+            console.log('视频加载完成');
+        });
+        
+        video.addEventListener('play', function() {
+            document.querySelector('.video-wrapper').style.boxShadow = '0 15px 50px rgba(79, 172, 254, 0.4)';
+        });
+        
+        video.addEventListener('pause', function() {
+            document.querySelector('.video-wrapper').style.boxShadow = 'var(--card-shadow)';
+        });
+        
+        // 返回按钮悬停效果
+        document.querySelector('a[href="javascript:history.back()"]').addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-3px)';
+            this.style.boxShadow = '0 8px 25px rgba(102, 126, 234, 0.5)';
+        });
+        
+        document.querySelector('a[href="javascript:history.back()"]').addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
+        });
+    </script>
+</body>
 </html>

@@ -1,153 +1,216 @@
-#ifndef HTTPCONNECTION_H
-#define HTTPCONNECTION_H
-#include <unistd.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+// Copyright 2025 TinyWebServer
+// HTTP connection handler with HTTP/1.1 protocol parsing
+// Follows Google C++ Style Guide
+
+#ifndef TINYWEBSERVER_HTTP_HTTP_CONN_H_
+#define TINYWEBSERVER_HTTP_HTTP_CONN_H_
+
 #include <arpa/inet.h>
-#include <assert.h>
-#include <sys/stat.h>
-#include <string.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/epoll.h>
 #include <sys/mman.h>
-#include <stdarg.h>
-#include <errno.h>
-#include <sys/wait.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/uio.h>
+#include <unistd.h>
+
 #include <map>
+#include <mysql/mysql.h>
 #include <string>
+#include <vector>
 
-#include "../lock/locker.h"
 #include "../CGImysql/sql_connection_pool.h"
-#include "../timer/lst_timer.h"
 #include "../log/log.h"
+#include "../timer/lst_timer.h"
 
-class http_conn
-{
-public:
-    static const int FILENAME_LEN = 200;
-    static const int READ_BUFFER_SIZE = 2048;
-    static const int WRITE_BUFFER_SIZE = 1024;
-    enum METHOD
-    {
-        GET = 0,
-        POST,
-        HEAD,
-        PUT,
-        DELETE,
-        TRACE,
-        OPTIONS,
-        CONNECT,
-        PATH
-    };
-    enum CHECK_STATE
-    {
-        CHECK_STATE_REQUESTLINE = 0,
-        CHECK_STATE_HEADER,
-        CHECK_STATE_CONTENT
-    };
-    enum HTTP_CODE
-    {
-        NO_REQUEST,
-        GET_REQUEST,
-        BAD_REQUEST,
-        NO_RESOURCE,
-        FORBIDDEN_REQUEST,
-        FILE_REQUEST,
-        INTERNAL_ERROR,
-        CLOSED_CONNECTION
-    };
-    enum LINE_STATUS
-    {
-        LINE_OK = 0,
-        LINE_BAD,
-        LINE_OPEN
-    };
+namespace tinywebserver {
 
-public:
-    http_conn() {}
-    ~http_conn() {}
+// HTTP connection class for handling HTTP requests and responses
+class HttpConnection {
+ public:
+  // Constants
+  static constexpr int kFileNameLen = 200;
+  static constexpr int kReadBufferSize = 2048;
+  static constexpr int kWriteBufferSize = 1024;
 
-public:
-    void init(int sockfd, const sockaddr_in &addr, char *, int, int, const std::string &user, const std::string &passwd, const std::string &sqlname);
-    void close_conn(bool real_close = true);
-    void process();
-    bool read_once();
-    bool write();
-    sockaddr_in *get_address()
-    {
-        return &m_address;
-    }
-    void initmysql_result(connection_pool *connPool);
-    int timer_flag;
-    int improv;
+  // HTTP method enumeration
+  enum class Method {
+    kGet = 0,
+    kPost,
+    kHead,
+    kPut,
+    kDelete,
+    kTrace,
+    kOptions,
+    kConnect,
+    kPatch
+  };
 
+  // Parse state enumeration
+  enum class CheckState {
+    kRequestLine = 0,
+    kHeader,
+    kContent
+  };
 
-private:
-    void init();
-    HTTP_CODE process_read();
-    bool process_write(HTTP_CODE ret);
-    HTTP_CODE parse_request_line(char *text);
-    HTTP_CODE parse_headers(char *text);
-    HTTP_CODE parse_content(char *text);
-    HTTP_CODE do_request();
-    char *get_line() { return m_read_buf + m_start_line; };
-    LINE_STATUS parse_line();
-    void unmap();
-    bool add_response(const char *format, ...);
-    bool add_content(const char *content);
-    bool add_status_line(int status, const char *title);
-    bool add_headers(int content_length);
-    bool add_content_type();
-    bool add_content_length(int content_length);
-    bool add_linger();
-    bool add_blank_line();
+  // HTTP status code enumeration
+  enum class HttpCode {
+    kNoRequest,
+    kGetRequest,
+    kBadRequest,
+    kNoResource,
+    kForbiddenRequest,
+    kFileRequest,
+    kInternalError,
+    kClosedConnection
+  };
 
-public:
-    static int m_epollfd;
-    static int m_user_count;
-    MYSQL *mysql;
-    int m_state;  //读为0, 写为1
+  // Line parsing status
+  enum class LineStatus {
+    kOk = 0,
+    kBad,
+    kOpen
+  };
 
-private:
-    int m_sockfd;
-    sockaddr_in m_address;
-    char m_read_buf[READ_BUFFER_SIZE];
-    long m_read_idx;
-    long m_checked_idx;
-    int m_start_line;
-    char m_write_buf[WRITE_BUFFER_SIZE];
-    int m_write_idx;
-    CHECK_STATE m_check_state;
-    METHOD m_method;
-    char m_real_file[FILENAME_LEN];
-    char *m_url;
-    char *m_version;
-    char *m_host;
-    long m_content_length;
-    bool m_linger;
-    char *m_file_address;
-    struct stat m_file_stat;
-    struct iovec m_iv[2];
-    int m_iv_count;
-    int cgi;        //是否启用的POST
-    char *m_string; //存储请求头数据
-    int bytes_to_send;
-    int bytes_have_send;
-    char *doc_root;
+  HttpConnection() = default;
+  ~HttpConnection();
 
-    std::map<std::string, std::string> m_users;
-    int m_TRIGMode;
-    int m_close_log;
+  // Allow move operations
+  HttpConnection(HttpConnection&&) = default;
+  HttpConnection& operator=(HttpConnection&&) = default;
 
-    char sql_user[100];
-    char sql_passwd[100];
-    char sql_name[100];
+  // Disable copy operations
+  HttpConnection(const HttpConnection&) = delete;
+  HttpConnection& operator=(const HttpConnection&) = delete;
+
+  // Initializes the HTTP connection.
+  // @param sockfd Socket file descriptor
+  // @param addr Client address
+  // @param root Document root directory
+  // @param trigger_mode Trigger mode (0=LT, 1=ET)
+  // @param close_log Log disable flag
+  // @param user Database username
+  // @param passwd Database password
+  // @param sqlname Database name
+  void init(int sockfd, const sockaddr_in& addr, char* root, int trigger_mode,
+            int close_log, const std::string& user, const std::string& passwd,
+            const std::string& sqlname);
+
+  // Closes the connection.
+  // @param real_close Whether to actually close the socket
+  void close_conn(bool real_close = true);
+
+  // Processes the HTTP request.
+  void process();
+
+  // Reads data from socket once (non-blocking).
+  // @return true if read successfully, false otherwise
+  bool read_once();
+
+  // Writes data to socket.
+  // @return true if write successfully, false otherwise
+  bool write();
+
+  // Gets client address.
+  sockaddr_in* get_address() { return &address_; }
+
+  // Initializes MySQL result set with user data.
+  // @param conn_pool Connection pool
+  void initmysql_result(ConnectionPool* conn_pool);
+
+  // Public members for timer and state management
+  int timer_flag{0};
+  int improv{0};
+  int m_state{0};  // 0=read, 1=write
+  MYSQL* mysql{nullptr};
+
+  // Static members
+  static int m_epollfd;
+  static int m_user_count;
+
+ private:
+  // Internal initialization
+  void init();
+
+  // HTTP parsing
+  HttpCode ProcessRead();
+  bool ProcessWrite(HttpCode ret);
+
+  HttpCode ParseRequestLine(char* text);
+  HttpCode ParseHeaders(char* text);
+  HttpCode ParseContent(char* text);
+  HttpCode DoRequest();
+
+  char* GetLine() { return &read_buf_[start_line_]; }
+  LineStatus ParseLine();
+
+  void Unmap();
+
+  // Response building
+  bool AddResponse(const char* format, ...);
+  bool AddContent(const char* content);
+  bool AddStatusLine(int status, const char* title);
+  bool AddHeaders(int content_length);
+  bool AddContentType();
+  bool AddContentLength(int content_length);
+  bool AddLinger();
+  bool AddBlankLine();
+
+ private:
+  int sockfd_{-1};
+  sockaddr_in address_{};
+
+  std::vector<char> read_buf_;
+  size_t read_idx_{0};
+  size_t checked_idx_{0};
+  int start_line_{0};
+
+  std::vector<char> write_buf_;
+  int write_idx_{0};
+
+  CheckState check_state_{CheckState::kRequestLine};
+  Method method_{Method::kGet};
+
+  std::vector<char> real_file_;
+  char* url_{nullptr};
+  char* version_{nullptr};
+  char* host_{nullptr};
+  size_t content_length_{0};
+  bool linger_{false};
+
+  char* file_address_{nullptr};
+  struct stat file_stat_{};
+  struct iovec iov_[2]{};
+  int iov_count_{0};
+
+  int cgi_{0};
+  char* string_{nullptr};
+  int bytes_to_send_{0};
+  int bytes_have_send_{0};
+  char* doc_root_{nullptr};
+
+  std::map<std::string, std::string> users_;
+  int trigger_mode_{0};
+  int close_log_{0};
+
+  std::vector<char> sql_user_;
+  std::vector<char> sql_passwd_;
+  std::vector<char> sql_name_;
 };
 
-#endif
+// Utility functions
+int SetNonBlocking(int fd);
+void AddFd(int epollfd, int fd, bool one_shot, int trigger_mode);
+void RemoveFd(int epollfd, int fd);
+void ModifyFd(int epollfd, int fd, int ev, int trigger_mode);
+
+// Helper function for timer callback
+void DecrementHttpUserCount();
+
+}  // namespace tinywebserver
+
+#endif  // TINYWEBSERVER_HTTP_HTTP_CONN_H_
+

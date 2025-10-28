@@ -1,15 +1,111 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>awsl</title>
-    </head>
-    <body><br/>
-<br/>
-<div align="center"><font size="5"> <strong>你居然想看图，不想关注我</strong></font></div>
-<br/>
-<!--<div  align="center">a w s l</div>-->
-<br/>
-<br/>
-<div align="center"><img src="./xxx.jpg" title="awsl"/></div>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片展示 - TinyWebServer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .gallery-container {
+            max-width: 1000px;
+            padding: 40px 20px;
+        }
+        
+        .image-wrapper {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            margin: 30px 0;
+        }
+        
+        .image-wrapper img {
+            width: 100%;
+            height: auto;
+            display: block;
+            transition: transform 0.5s ease;
+        }
+        
+        .image-wrapper:hover img {
+            transform: scale(1.05);
+        }
+        
+        .image-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+            padding: 30px 20px 20px;
+            color: white;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .image-wrapper:hover .image-overlay {
+            transform: translateY(0);
+        }
+        
+        .fun-message {
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, rgba(240, 147, 251, 0.2), rgba(245, 87, 108, 0.2));
+            border-radius: 16px;
+            margin: 30px 0;
+        }
+        
+        .fun-message h2 {
+            font-size: 1.8rem;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+        
+        .fun-message p {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <a href="javascript:history.back()" class="back-btn">←</a>
+    
+    <div class="container gallery-container">
+        <h1 class="title">🖼️ 图片展示</h1>
+        <p class="subtitle">欣赏精美图片</p>
+        
+        <div class="fun-message">
+            <h2>😄 你选择了图片！</h2>
+            <p>颜表情----(๑•́₃•̀๑)</p>
+        </div>
+        
+        <div class="image-wrapper">
+            <img src="./xxx.jpg" alt="精美图片" title="TinyWebServer 图片展示"/>
+            <div class="image-overlay">
+                <h3 style="margin: 0 0 10px 0; font-size: 1.3rem;">✨ 精美图片</h3>
+                <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">由 TinyWebServer 提供</p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="javascript:history.back()" style="display: inline-block; padding: 15px 40px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
+                ← 返回选择
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        // 图片加载动画
+        const img = document.querySelector('.image-wrapper img');
+        img.style.opacity = '0';
+        img.onload = function() {
+            this.style.transition = 'opacity 0.8s ease';
+            this.style.opacity = '1';
+        };
+        
+        // 如果图片已经缓存
+        if (img.complete) {
+            img.style.opacity = '1';
+        }
+    </script>
+</body>
 </html>

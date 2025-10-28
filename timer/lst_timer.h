@@ -1,102 +1,162 @@
-#ifndef LST_TIMER
-#define LST_TIMER
+// Copyright 2025 TinyWebServer
+// Timer management with sorted linked list for connection timeout handling
+// Follows Google C++ Style Guide
 
-#include <unistd.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#ifndef TINYWEBSERVER_TIMER_LST_TIMER_H_
+#define TINYWEBSERVER_TIMER_LST_TIMER_H_
+
 #include <arpa/inet.h>
-#include <assert.h>
-#include <sys/stat.h>
-#include <string.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <stdarg.h>
-#include <errno.h>
-#include <sys/wait.h>
-#include <sys/uio.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
-#include <time.h>
+#include <chrono>
+#include <cstring>
+#include <functional>
+#include <memory>
+
 #include "../log/log.h"
 
-class util_timer;
+namespace tinywebserver {
 
-struct client_data
-{
-    sockaddr_in address;
-    int sockfd;
-    util_timer *timer;
+// Forward declarations
+class Timer;
+class HttpConnection;
+
+// Client connection data associated with a timer
+struct ClientData {
+  sockaddr_in address;
+  int sockfd{-1};
+  Timer* timer{nullptr};
 };
 
-class util_timer
-{
-public:
-    util_timer() : prev(NULL), next(NULL) {}
+// Timer node in the sorted timer list.
+// Manages timeout for a single connection.
+class Timer {
+ public:
+  using TimePoint = std::chrono::steady_clock::time_point;
+  using Callback = std::function<void(ClientData*)>;
 
-public:
-    time_t expire;
-    
-    void (* cb_func)(client_data *);
-    client_data *user_data;
-    util_timer *prev;
-    util_timer *next;
+  Timer()
+      : expire_time_(std::chrono::steady_clock::now()),
+        callback_(nullptr),
+        user_data_(nullptr),
+        prev_(nullptr),
+        next_(nullptr) {}
+
+  ~Timer() = default;
+
+  // Disable copy and move operations
+  Timer(const Timer&) = delete;
+  Timer& operator=(const Timer&) = delete;
+  Timer(Timer&&) = delete;
+  Timer& operator=(Timer&&) = delete;
+
+  TimePoint expire_time_;  // Expiration time
+  Callback callback_;      // Callback function when timer expires
+  ClientData* user_data_;  // Associated client data
+  Timer* prev_;            // Previous timer in list
+  Timer* next_;            // Next timer in list
 };
 
-class sort_timer_lst
-{
-public:
-    sort_timer_lst();
-    ~sort_timer_lst();
+// Sorted timer list for managing connection timeouts.
+// Timers are sorted by expiration time in ascending order.
+class SortedTimerList {
+ public:
+  SortedTimerList();
+  ~SortedTimerList();
 
-    void add_timer(util_timer *timer);
-    void adjust_timer(util_timer *timer);
-    void del_timer(util_timer *timer);
-    void tick();
+  // Disable copy and move operations
+  SortedTimerList(const SortedTimerList&) = delete;
+  SortedTimerList& operator=(const SortedTimerList&) = delete;
+  SortedTimerList(SortedTimerList&&) = delete;
+  SortedTimerList& operator=(SortedTimerList&&) = delete;
 
-private:
-    void add_timer(util_timer *timer, util_timer *lst_head);
+  // Adds a new timer to the list.
+  // @param timer Timer to add (must not be null)
+  void AddTimer(Timer* timer);
 
-    util_timer *head;
-    util_timer *tail;
+  // Adjusts timer position after its expiration time changes.
+  // @param timer Timer to adjust
+  void AdjustTimer(Timer* timer);
+
+  // Removes and deletes a timer from the list.
+  // @param timer Timer to delete
+  void DeleteTimer(Timer* timer);
+
+  // Processes all expired timers.
+  // Invokes callbacks for expired timers and removes them from the list.
+  void Tick();
+
+ private:
+  // Adds timer to list starting from specified position.
+  void AddTimer(Timer* timer, Timer* list_head);
+
+  Timer* head_;  // Head of the timer list
+  Timer* tail_;  // Tail of the timer list
 };
 
-class Utils
-{
-public:
-    Utils() {}
-    ~Utils() {}
+// Utility class for managing epoll, signals, and timers
+class TimerUtils {
+ public:
+  TimerUtils() : timeslot_(0) {}
+  ~TimerUtils() = default;
 
-    void init(int timeslot);
+  // Disable copy operations
+  TimerUtils(const TimerUtils&) = delete;
+  TimerUtils& operator=(const TimerUtils&) = delete;
 
-    //对文件描述符设置非阻塞
-    int setnonblocking(int fd);
+  // Initializes the timer utilities with a timeslot duration.
+  // @param timeslot Time interval in seconds for alarm signals
+  void Init(int timeslot);
 
-    //将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
-    void addfd(int epollfd, int fd, bool one_shot, int TRIGMode);
+  // Sets a file descriptor to non-blocking mode.
+  // @param fd File descriptor to modify
+  // @return Previous file descriptor flags
+  int SetNonBlocking(int fd);
 
-    //信号处理函数
-    static void sig_handler(int sig);
+  // Adds a file descriptor to the epoll instance.
+  // @param epollfd Epoll file descriptor
+  // @param fd File descriptor to add
+  // @param one_shot Whether to use EPOLLONESHOT
+  // @param trigger_mode 0=LT, 1=ET
+  void AddFd(int epollfd, int fd, bool one_shot, int trigger_mode);
 
-    //设置信号函数
-    void addsig(int sig, void(handler)(int), bool restart = true);
+  // Signal handler function.
+  // @param sig Signal number
+  static void SignalHandler(int sig);
 
-    //定时处理任务，重新定时以不断触发SIGALRM信号
-    void timer_handler();
+  // Registers a signal handler.
+  // @param sig Signal number
+  // @param handler Handler function
+  // @param restart Whether to restart interrupted system calls
+  void AddSignal(int sig, void (*handler)(int), bool restart = true);
 
-    void show_error(int connfd, const char *info);
+  // Handles timer expiration and reschedules alarm.
+  void HandleTimer();
 
-public:
-    static int *u_pipefd;
-    sort_timer_lst m_timer_lst;
-    static int u_epollfd;
-    int m_TIMESLOT;
+  // Sends error message to client and closes connection.
+  // @param connfd Client connection file descriptor
+  // @param info Error message
+  void ShowError(int connfd, const char* info);
+
+  // Static members for signal handling
+  static int* pipe_fd_;       // Pipe for signal notification
+  static int epoll_fd_;       // Epoll file descriptor
+
+  SortedTimerList timer_list_;  // Timer list
+  int timeslot_;                // Timer interval in seconds
 };
 
-void cb_func(client_data *user_data);
+// Callback function for timer expiration.
+// Closes the connection and decrements the user count.
+// @param user_data Client data associated with the timer
+void TimerCallback(ClientData* user_data);
 
-#endif
+}  // namespace tinywebserver
+
+#endif  // TINYWEBSERVER_TIMER_LST_TIMER_H_
+
