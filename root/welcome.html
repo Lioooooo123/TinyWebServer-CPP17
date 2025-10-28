@@ -1,27 +1,80 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>WebServer</title>
-    </head>
-    <body>
-    <br/>
-    <br/>
-    <div align="center"><font size="5"> <strong>是时候做出选择了</strong></font></div>
-	<br/>
-		<br/>
-		<form action="5" method="post">
- 			<div align="center"><button type="submit">xxx.jpg</button></div>
-                </form>
-		<br/>
-                <form action="6" method="post">
-                        <div align="center"><button type="submit" >xxx.avi</button></div>
-                </form>
-		<br/>
-		<form action="7" method="post">
- 			<div align="center"><button type="submit">关注我</button></div>
-                </form>
-		
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选择内容 - TinyWebServer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="javascript:history.back()" class="back-btn">←</a>
+    
+    <div class="container">
+        <h1 class="title">🎉 登录成功！</h1>
+        <p class="subtitle">选择您想要浏览的内容</p>
+        
+        <form action="5" method="post">
+            <div class="card" onclick="this.closest('form').submit()" style="cursor: pointer;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="card-icon" style="margin: 0;">🖼️</div>
+                    <div style="flex: 1;">
+                        <div class="card-title">查看图片</div>
+                        <p class="card-description">浏览精美图片内容</p>
+                    </div>
+                    <div style="font-size: 1.5rem; color: #cbd5e0;">→</div>
+                </div>
+                <button type="submit" style="display: none;"></button>
+            </div>
+        </form>
+        
+        <form action="6" method="post">
+            <div class="card" onclick="this.closest('form').submit()" style="cursor: pointer;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="card-icon" style="margin: 0; background: linear-gradient(135deg, #f093fb, #f5576c);">🎬</div>
+                    <div style="flex: 1;">
+                        <div class="card-title">观看视频</div>
+                        <p class="card-description">体验高清视频播放</p>
+                    </div>
+                    <div style="font-size: 1.5rem; color: #cbd5e0;">→</div>
+                </div>
+                <button type="submit" style="display: none;"></button>
+            </div>
+        </form>
+        
+        <form action="7" method="post">
+            <div class="card" onclick="this.closest('form').submit()" style="cursor: pointer;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="card-icon" style="margin: 0; background: linear-gradient(135deg, #4facfe, #00f2fe);">⭐</div>
+                    <div style="flex: 1;">
+                        <div class="card-title">么么哒</div>
+                        <p class="card-description">(๑•́₃•̀๑)</p>
+                    </div>
+                    <div style="font-size: 1.5rem; color: #cbd5e0;">→</div>
+                </div>
+                <button type="submit" style="display: none;"></button>
+            </div>
+        </form>
+        
+        <div style="margin-top: 40px; padding: 20px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); border-radius: 12px; text-align: center;">
+            <p style="color: #667eea; font-weight: 600; margin: 0;">
+                ✨ 感谢使用 TinyWebServer
+            </p>
         </div>
-    </body>
+    </div>
+    
+    <script>
+        // 卡片点击动画
+        document.querySelectorAll('.card').forEach((card, index) => {
+            card.style.animationDelay = `${index * 0.1}s`;
+            
+            card.addEventListener('mousedown', function() {
+                this.style.transform = 'translateY(-3px) scale(0.98)';
+            });
+            
+            card.addEventListener('mouseup', function() {
+                this.style.transform = 'translateY(-5px) scale(1)';
+            });
+        });
+    </script>
+</body>
 </html>

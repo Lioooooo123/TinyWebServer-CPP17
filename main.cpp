@@ -38,13 +38,28 @@ int main(int argc, char* argv[]) {
         config.actor_model());
 
     // Initialize subsystems
+    std::cout << "[DEBUG] Initializing log system..." << std::endl;
     server.InitLog();
+    std::cout << "[DEBUG] Log system initialized" << std::endl;
+    
+    std::cout << "[DEBUG] Initializing SQL pool..." << std::endl;
     server.InitSqlPool();
+    std::cout << "[DEBUG] SQL pool initialized" << std::endl;
+    
+    std::cout << "[DEBUG] Initializing thread pool..." << std::endl;
     server.InitThreadPool();
+    std::cout << "[DEBUG] Thread pool initialized" << std::endl;
+    
+    std::cout << "[DEBUG] Setting trigger mode..." << std::endl;
     server.SetTriggerMode();
+    std::cout << "[DEBUG] Trigger mode set" << std::endl;
+    
+    std::cout << "[DEBUG] Starting listen..." << std::endl;
     server.StartListen();
+    std::cout << "[DEBUG] Listen started" << std::endl;
 
     // Run the event loop
+    std::cout << "[DEBUG] Entering event loop..." << std::endl;
     server.EventLoop();
 
   } catch (const std::exception& e) {

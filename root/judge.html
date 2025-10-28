@@ -1,26 +1,41 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>WebServer</title>
-    </head>
-    <body>
-    <br/>
-    <br/>
-    <div align="center"><font size="5"> <strong>欢迎访问</strong></font></div>
-	<br/>
-		<br/>
-		<form action="0" method="post">
- 			<div align="center"><button type="submit">新用户</button></div>
-                </form>
-		<br/>
-                <form action="1" method="post">
-                        <div align="center"><button type="submit" >已有账号</button></div>
-                </form>
-		
-		
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TinyWebServer - 欢迎访问</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🌟 TinyWebServer</h1>
+        <p class="subtitle">高性能 C++ Web 服务器</p>
+        
+        <div class="options-grid">
+            <form action="0" method="post" style="margin: 0;">
+                <div class="card option-card" onclick="this.closest('form').submit()">
+                    <div class="option-icon">👤</div>
+                    <div class="card-title">新用户</div>
+                    <p class="card-description">创建您的账号</p>
+                    <button type="submit" style="display: none;"></button>
+                </div>
+            </form>
+            
+            <form action="1" method="post" style="margin: 0;">
+                <div class="card option-card" onclick="this.closest('form').submit()">
+                    <div class="option-icon">🔐</div>
+                    <div class="card-title">已有账号</div>
+                    <p class="card-description">立即登录</p>
+                    <button type="submit" style="display: none;"></button>
+                </div>
+            </form>
         </div>
-    </body>
+        
+        <div style="text-align: center; margin-top: 40px; color: #718096; font-size: 0.9rem;">
+            <p>✨ 基于 C++17 的现代化 Web 服务器</p>
+            <p style="margin-top: 5px;">支持高并发、日志系统、数据库连接池</p>
+        </div>
+    </div>
+</body>
 </html>
-
 

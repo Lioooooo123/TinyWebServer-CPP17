@@ -1,22 +1,105 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Sign up</title>
-    </head>
-    <body>
-<br/>
-<br/>
-    <div align="center"><font size="5"> <strong>注册</strong></font></div>
-    <br/>
-        <div class="login">
-                <form action="3CGISQL.cgi" method="post">
-                        <div align="center"><input type="text" name="user" placeholder="用户名" required="required"></div><br/>
-                        <div align="center"><input type="password" name="password" placeholder="用户密码" required="required"></div><br/>
-                        <div align="center"><button type="submit">注册</button></div>
-                </form>
-		<div  align="center">提示：该用户名被注册.</div>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册失败 - TinyWebServer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="javascript:history.back()" class="back-btn">←</a>
+    
+    <div class="container">
+        <h1 class="title">✨ 注册账号</h1>
+        <p class="subtitle">创建您的 TinyWebServer 账号</p>
+        
+        <div class="message message-error">
+            ⚠️ 该用户名已被注册，请更换其他用户名
         </div>
-    </body>
+        
+        <form action="3CGISQL.cgi" method="post">
+            <div class="form-group">
+                <input type="text" 
+                       name="user" 
+                       placeholder="👤 请输入用户名" 
+                       required 
+                       minlength="3"
+                       maxlength="20"
+                       autocomplete="username"
+                       autofocus>
+            </div>
+            
+            <div class="form-group">
+                <input type="password" 
+                       name="password" 
+                       placeholder="🔒 请输入密码 (至少6位)" 
+                       required
+                       minlength="6"
+                       autocomplete="new-password"
+                       id="password">
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-success">重新注册</button>
+            </div>
+        </form>
+        
+        <div style="text-align: center; margin-top: 30px; color: #718096;">
+            <p>已有账号？ <a href="javascript:history.back()" style="color: #667eea; text-decoration: none; font-weight: 600;">返回登录</a></p>
+        </div>
+        
+        <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 12px; border-left: 4px solid #fa709a;">
+            <p style="color: #4a5568; font-size: 0.9rem; line-height: 1.6; margin: 0;">
+                💡 <strong>提示：</strong>请尝试不同的用户名，用户名长度为 3-20 个字符
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // 错误消息动画
+        const errorMsg = document.querySelector('.message-error');
+        errorMsg.style.animation = 'shake 0.5s ease';
+        
+        // 添加抖动动画
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                20%, 40%, 60%, 80% { transform: translateX(5px); }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // 表单提交动画
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const btn = this.querySelector('button');
+            btn.innerHTML = '<span class="loading"></span> 注册中...';
+            btn.disabled = true;
+        });
+        
+        // 密码强度提示
+        const passwordInput = document.getElementById('password');
+        passwordInput.addEventListener('input', function() {
+            const strength = this.value.length;
+            if (strength < 6) {
+                this.style.borderColor = '#fa709a';
+            } else if (strength < 10) {
+                this.style.borderColor = '#f093fb';
+            } else {
+                this.style.borderColor = '#4facfe';
+            }
+        });
+        
+        // 输入框焦点效果
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('focus', function() {
+                document.querySelector('.message-error').style.opacity = '0.6';
+            });
+            input.addEventListener('blur', function() {
+                document.querySelector('.message-error').style.opacity = '1';
+            });
+        });
+    </script>
+</body>
 </html>
-

@@ -30,29 +30,41 @@ std::map<std::string, std::string> users;
 
 void HttpConnection::initmysql_result(ConnectionPool* connPool) {
   // 先从连接池中取一个连接
-  MYSQL* mysql = NULL;
+  MYSQL* mysql = nullptr;
   ConnectionRAII mysqlcon(&mysql, connPool);
 
-  // 在user表中检索username，passwd数据，浏览器端输入
+  if (mysql == nullptr) {
+    LOG_ERROR("%s", "MySQL connection retrieval failed");
+    return;
+  }
+
+  // 在 user 表中检索 username，passwd 数据
   if (mysql_query(mysql, "SELECT username,passwd FROM user")) {
-    LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
+    LOG_ERROR("SELECT error: %s", mysql_error(mysql));
+    return;
   }
 
   // 从表中检索完整的结果集
   MYSQL_RES* result = mysql_store_result(mysql);
-
-  // 返回结果集中的列数
-  int num_fields = mysql_num_fields(result);
-
-  // 返回所有字段结构的数组
-  MYSQL_FIELD* fields = mysql_fetch_fields(result);
-
-  // 从结果集中获取下一行，将对应的用户名和密码，存入map中
-  while (MYSQL_ROW row = mysql_fetch_row(result)) {
-    std::string temp1(row[0]);
-    std::string temp2(row[1]);
-    users[temp1] = temp2;
+  if (result == nullptr) {
+    if (mysql_field_count(mysql) != 0) {
+      LOG_ERROR("mysql_store_result error: %s", mysql_error(mysql));
+    }
+    return;
   }
+
+  std::lock_guard<std::mutex> lock(users_mutex);
+  users.clear();
+
+  // 从结果集中获取下一行，将对应的用户名和密码，存入 map 中
+  while (MYSQL_ROW row = mysql_fetch_row(result)) {
+    if (row[0] == nullptr || row[1] == nullptr) {
+      continue;
+    }
+    users[std::string(row[0])] = std::string(row[1]);
+  }
+
+  mysql_free_result(result);
 }
 
 // 对文件描述符设置非阻塞

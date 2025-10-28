@@ -184,10 +184,18 @@ void TimerUtils::AddFd(int epollfd, int fd, bool one_shot, int trigger_mode) {
 }
 
 void TimerUtils::SignalHandler(int sig) {
+  // 立即输出，不管其他
+  const char* msg_str = "[SIGNAL HANDLER CALLED]\n";
+  write(STDERR_FILENO, msg_str, strlen(msg_str));
+  
   // 保存 errno 以保证可重入性
   int saved_errno = errno;
   int msg = sig;
-  send(pipe_fd_[1], reinterpret_cast<char*>(&msg), 1, 0);
+  
+  if (pipe_fd_ != nullptr && pipe_fd_[1] >= 0) {
+    send(pipe_fd_[1], reinterpret_cast<char*>(&msg), 1, 0);
+  }
+  
   errno = saved_errno;
 }
 
@@ -201,7 +209,13 @@ void TimerUtils::AddSignal(int sig, void (*handler)(int), bool restart) {
   }
 
   sigfillset(&sa.sa_mask);
-  assert(sigaction(sig, &sa, nullptr) != -1);
+  int ret = sigaction(sig, &sa, nullptr);
+  
+  fprintf(stderr, "[AddSignal] Registering signal %d, handler=%p, result=%d\n", 
+          sig, (void*)handler, ret);
+  fflush(stderr);
+  
+  assert(ret != -1);
 }
 
 void TimerUtils::HandleTimer() {

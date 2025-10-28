@@ -1,21 +1,63 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Sign in</title>
-    </head>
-    <body>
-<br/>
-<br/>
-    <div align="center"><font size="5"> <strong>登录</strong></font></div>
-    <br/>
-        <div class="login">
-                <form action="2CGISQL.cgi" method="post">
-                        <div align="center"><input type="text" name="user" placeholder="用户名" required="required"></div><br/>
-                        <div align="center"><input type="password" name="password" placeholder="登录密码" required="required"></div><br/>
-                        <div align="center"><button type="submit">确定</button></div>
-                </form>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - TinyWebServer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="javascript:history.back()" class="back-btn">←</a>
+    
+    <div class="container">
+        <h1 class="title">🔐 登录</h1>
+        <p class="subtitle">欢迎回来，请登录您的账号</p>
+        
+        <form action="2CGISQL.cgi" method="post">
+            <div class="form-group">
+                <input type="text" 
+                       name="user" 
+                       placeholder="👤 请输入用户名" 
+                       required 
+                       autocomplete="username"
+                       autofocus>
+            </div>
+            
+            <div class="form-group">
+                <input type="password" 
+                       name="password" 
+                       placeholder="🔒 请输入密码" 
+                       required
+                       autocomplete="current-password">
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn">登录</button>
+            </div>
+        </form>
+        
+        <div style="text-align: center; margin-top: 30px; color: #718096;">
+            <p>还没有账号？ <a href="javascript:history.back()" style="color: #667eea; text-decoration: none; font-weight: 600;">返回注册</a></p>
         </div>
-    </body>
+    </div>
+    
+    <script>
+        // 添加表单验证和提交动画
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const btn = this.querySelector('button');
+            btn.innerHTML = '<span class="loading"></span> 登录中...';
+            btn.disabled = true;
+        });
+        
+        // 输入框焦点效果增强
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('focus', function() {
+                this.parentElement.style.transform = 'scale(1.02)';
+            });
+            input.addEventListener('blur', function() {
+                this.parentElement.style.transform = 'scale(1)';
+            });
+        });
+    </script>
+</body>
 </html>
-

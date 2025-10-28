@@ -127,8 +127,10 @@ void WebServer::InitSqlPool() {
 
 void WebServer::InitThreadPool() {
   // 初始化线程池
+  LOG_INFO("Starting thread pool initialization...");
   thread_pool_ =
       std::make_unique<ThreadPool<HttpConnection>>(actor_model_, conn_pool_, thread_num_);
+  LOG_INFO("Thread pool initialized successfully!");
 }
 
 void WebServer::StartListen() {
@@ -176,16 +178,16 @@ void WebServer::StartListen() {
   timer_utils_.SetNonBlocking(pipe_fd_[1]);
   timer_utils_.AddFd(epoll_fd_, pipe_fd_[0], false, 0);
 
+  // 设置用于信号处理的静态成员（必须在注册信号处理器之前）
+  TimerUtils::pipe_fd_ = pipe_fd_;
+  TimerUtils::epoll_fd_ = epoll_fd_;
+
   // 注册信号处理器
   timer_utils_.AddSignal(SIGPIPE, SIG_IGN);
   timer_utils_.AddSignal(SIGALRM, TimerUtils::SignalHandler, false);
   timer_utils_.AddSignal(SIGTERM, TimerUtils::SignalHandler, false);
 
   alarm(kTimeSlot);
-
-  // 设置用于信号处理的静态成员
-  TimerUtils::pipe_fd_ = pipe_fd_;
-  TimerUtils::epoll_fd_ = epoll_fd_;
 }
 
 void WebServer::AddTimer(int connfd, const sockaddr_in& client_address) {
