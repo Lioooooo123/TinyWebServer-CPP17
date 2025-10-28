@@ -7,7 +7,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <mutex>
-
+#include <iostream>
 namespace tinywebserver {
 
 // HTTP response status information
@@ -223,6 +223,8 @@ bool HttpConnection::read_once() {
                       kReadBufferSize - read_idx_, 0);
     read_idx_ += bytes_read;
 
+    
+    
     if (bytes_read <= 0) {
       return false;
     }
@@ -241,6 +243,9 @@ bool HttpConnection::read_once() {
         return false;
       }
       read_idx_ += bytes_read;
+      if (read_idx_ >= kReadBufferSize) {
+        break;
+      }
     }
     return true;
   }
