@@ -1,104 +1,154 @@
-# TinyWebServer C++17 现代化版本 🚀
+# TinyWebServer: A Modern C++17 Web Server 🚀
 
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/Lioooooo123/TinyWebServer-CPP17)
 [![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg)](https://cmake.org/)
 
-Linux下C++轻量级Web服务器的**完全现代化重构版本**，基于 [qinguoyi/TinyWebServer](https://github.com/qinguoyi/TinyWebServer) 进行深度 C++17 标准改造。
+A lightweight, high-performance web server for Linux, completely refactored with modern C++17. This project is a deep modernization of the original [qinguoyi/TinyWebServer](https://github.com/qinguoyi/TinyWebServer).
 
-> 🎓 **本项目已完成全面的C++17现代化改造，包括代码规范、内存管理、并发控制等各个方面的升级。**
+> 🎓 **This project has undergone a comprehensive C++17 modernization, upgrading everything from code style and memory management to concurrency control.**
 
-## ✨ 本版本特色
+---
 
-### 🔥 C++17 深度现代化
-本版本对原项目进行了**全方位的现代化重构**，不仅仅是简单的语法替换：
+## ✨ Key Features
 
-#### 核心改进
-- **智能指针全面应用**: `std::unique_ptr`/`std::shared_ptr` 管理所有动态资源，消除内存泄漏
-- **标准线程库**: 使用 `std::thread` 替代 pthread，提供更好的跨平台性和异常安全
-- **现代同步机制**: `std::mutex`、`std::condition_variable`、`std::atomic` 替代原始 pthread 锁
-- **标准容器**: `std::vector`、`std::queue`、`std::string` 提升类型安全性和内存管理
-- **命名空间封装**: 使用 `tinywebserver` 命名空间，避免全局命名冲突
-- **函数式编程**: Lambda 表达式简化回调和线程函数
-- **现代文件系统**: `std::filesystem` 处理路径，告别 C 风格字符串操作
+### 🔥 Deep C++17 Modernization
+This isn't just a syntax update; it's a full-scale refactoring using modern C++ best practices:
 
-#### 代码质量提升
-- **Google C++ 风格**: 遵循 Google C++ Style Guide，代码可读性大幅提升
-- **RAII 设计模式**: 资源获取即初始化，确保异常安全
-- **类型安全**: 使用 `enum class`、`constexpr` 等现代特性
-- **异常处理**: 完善的错误处理和日志记录机制
-- **编译期检查**: 更多编译期类型检查，减少运行时错误
+- **Smart Pointers**: `std::unique_ptr` and `std::shared_ptr` manage all dynamic resources, eliminating manual memory management and preventing leaks.
+- **Standard Concurrency**: Replaced `pthread` with `std::thread`, `std::mutex`, `std::condition_variable`, and `std::atomic` for safer and more portable multi-threading.
+- **Modern Tooling**: A robust build system powered by **CMake** ensures easy compilation and dependency management.
+- **RAII & Exception Safety**: Resources are managed by RAII principles, ensuring the server is robust and exception-safe.
+- **Code Quality**: Adheres to the **Google C++ Style Guide** for maximum readability and maintainability.
+- **Type Safety**: Utilizes `enum class`, `constexpr`, and other modern features to catch errors at compile time.
 
-### 🎯 新增功能
+### 🎯 Enhanced Functionality
 
-#### 配置管理系统
-- **配置文件支持**: 新增 `config.conf` 文件，支持 INI 格式配置
-- **灵活配置**: 命令行参数优先级高于配置文件
-- **参数验证**: 启动时自动验证配置合法性
-- **友好提示**: 配置错误时提供清晰的错误信息
+- **Flexible Configuration**: Configure the server via a `.conf` file or command-line arguments, with the latter taking precedence.
+- **Robust Build System**: A `cmake_build.sh` script automates the entire build process, including Debug/Release modes.
+- **Validated Parameters**: Server configurations are automatically validated on startup to prevent runtime errors.
 
-#### 构建系统升级
-- **CMake 支持**: 现代化的构建工具链，自动依赖检测
-- **一键构建脚本**: `cmake_build.sh` 提供快速构建选项
-- **并行编译**: 自动使用多核心加速编译
-- **灵活配置**: Debug/Release 模式切换，安装/卸载支持
+### 📦 Core Architecture
+The project retains the high-performance architecture of the original:
 
-### 📦 核心架构特性
+- **High Concurrency Model**: I/O multiplexing with **Epoll** (ET/LT modes) combined with a **thread pool**.
+- **Dual Concurrency Patterns**: Supports both **Reactor** and **Proactor** modes.
+- **HTTP Parsing**: A finite-state machine efficiently parses `GET` and `POST` requests.
+- **Database Integration**: A **MySQL connection pool** handles user registration and login.
+- **Static & Dynamic Content**: Serves static files (HTML, CSS, images) and handles dynamic CGI requests.
+- **Asynchronous Logging**: A high-performance logging system that can operate asynchronously to minimize performance impact.
+- **Connection Management**: A timer-based system efficiently manages and closes timed-out connections.
 
-本项目基于原有的高性能架构，保持了所有核心功能：
+## 🚀 Quick Start
 
-- **高并发模型**: 线程池 + 非阻塞 socket + epoll (ET/LT模式)
-- **双模式支持**: Reactor 和 Proactor 并发模式可选
-- **HTTP 解析**: 有限状态机解析 GET/POST 请求
-- **数据库集成**: MySQL 连接池，支持用户注册/登录
-- **静态资源**: 支持图片、视频等多媒体文件请求
-- **日志系统**: 同步/异步日志，记录服务器运行状态
-- **定时器**: 连接超时管理，优雅关闭连接
-- **压力测试**: 经 Webbench 验证，支持上万并发
+### 1. System Requirements
+- **OS**: Linux (Ubuntu 20.04+, Debian 10+, CentOS 7+ recommended)
+- **Compiler**: GCC 9.0+ or Clang 9.0+ (for full C++17 support)
+- **Build Tool**: CMake 3.16+
+- **Database**: MySQL 5.7+ or MariaDB
 
-## 🆚 与原版本对比
-
-### 代码层面改进
-
-| 维度 | 原版本 | C++17 现代化版本 |
-|------|--------|------------------|
-| **编译标准** | C++98/03 | C++17 |
-| **代码规范** | 无统一规范 | Google C++ Style Guide |
-| **命名空间** | 全局命名 | `tinywebserver` 命名空间 |
-| **内存管理** | 手动 new/delete | 智能指针 (unique_ptr/shared_ptr) |
-| **线程管理** | pthread | std::thread + RAII |
-| **同步原语** | pthread_mutex/cond | std::mutex/condition_variable |
-| **容器** | 原始数组/list | std::vector/queue |
-| **字符串** | char*/strcpy | std::string |
-| **文件路径** | C 字符串拼接 | std::filesystem |
-| **回调函数** | 函数指针 | std::function + Lambda |
-| **错误处理** | errno 检查 | 异常 + 日志 |
-| **类型安全** | 弱类型 | enum class + constexpr |
-
-### 功能层面增强
-
-| 功能 | 原版本 | C++17 现代化版本 |
-|------|--------|------------------|
-| **配置方式** | 仅命令行 | 配置文件 + 命令行 |
-| **构建工具** | Makefile | CMake + Makefile |
-| **构建脚本** | 无 | cmake_build.sh 一键构建 |
-| **参数验证** | 无 | 自动验证配置合法性 |
-| **错误提示** | 简单 | 详细的错误信息和日志 |
-| **代码注释** | 中文混杂 | 英文注释 + 文档化 |
-| **头文件保护** | 传统宏 | 现代化命名约定 |
-
-## 🚀 快速开始
-
-### 系统要求
-
-#### 编译环境
-- **操作系统**: Linux (Ubuntu 18.04+, CentOS 7+, Debian 10+ 等)
-- **编译器**: g++ 7.0+ 或 clang++ 5.0+ (完整 C++17 支持)
-- **CMake**: 3.15 或更高版本 (推荐 3.20+)
-
-#### 依赖库
+### 2. Dependencies (Ubuntu/Debian)
+Install all required libraries with a single command:
 ```bash
+sudo apt-get update && sudo apt-get install -y g++ cmake make libmysqlclient-dev
+```
+
+### 3. Build
+A helper script is provided to streamline the build process.
+
+```bash
+# Grant execute permission to the script
+chmod +x cmake_build.sh
+
+# Run the build script (defaults to Release mode)
+./cmake_build.sh
+```
+To build in Debug mode (with sanitizers enabled):
+```bash
+./cmake_build.sh debug
+```
+
+### 4. Run
+The executable will be located in the `build/bin` directory.
+
+```bash
+cd build/bin
+./tinywebserver
+```
+The server will start using the default settings in `config/server.conf`.
+
+## 🔧 Configuration and Usage
+
+You can configure the server in two ways:
+
+### 1. Using `config/server.conf`
+The default configuration file allows you to set the port, thread model, logging options, and more.
+
+```ini
+# config/server.conf
+[server]
+port = 9006
+actor_model = 1 # 0 for Proactor, 1 for Reactor
+conn_trig_mode = 3 # 0 for LT, 1 for ET, 2 for LT+ET, 3 for ET+ET
+log_write_model = 1 # 0 for sync, 1 for async
+thread_num = 8
+...
+```
+
+### 2. Using Command-Line Arguments
+You can override the configuration file settings with command-line flags.
+
+```bash
+# Example: Start the server on port 12345 in Proactor mode
+./tinywebserver -p 12345 -m 0
+```
+
+**Available Options:**
+- `-p, --port <port>`: Server port.
+- `-m, --actor-model <0|1>`: Concurrency model (0: Proactor, 1: Reactor).
+- `-t, --conn-trig-mode <0-3>`: Connection trigger mode.
+- `-l, --log-write-model <0|1>`: Log mode (0: Sync, 1: Async).
+- `-n, --thread-num <num>`: Number of threads in the thread pool.
+- `-c, --close-log <0|1>`: Disable/enable logging (0: Enable, 1: Disable).
+- `-d, --db-name <name>`: Database name.
+- `-u, --db-user <user>`: Database user.
+- `-w, --db-passwd <password>`: Database password.
+
+## 📂 Project Structure
+```
+.
+├── CGImysql/       # MySQL connection pool
+├── config/         # Configuration files
+├── http/           # HTTP connection and request handling
+├── log/            # Asynchronous/synchronous logging system
+├── root/           # Default website static files (HTML, CSS, images)
+├── threadpool/     # Thread pool implementation
+├── timer/          # Timer list for managing inactive connections
+├── CMakeLists.txt  # Main CMake build script
+├── main.cpp        # Server entry point
+└── webserver.cpp   # Core WebServer class
+```
+
+## 🆚 Comparison with Original Version
+
+| Dimension          | Original Version        | C++17 Modernized Version          |
+|--------------------|-------------------------|-----------------------------------|
+| **C++ Standard**   | C++98/03                | **C++17**                         |
+| **Code Style**     | No consistent style     | **Google C++ Style Guide**        |
+| **Namespace**      | Global namespace        | `tinywebserver` namespace         |
+| **Memory Mgmt**    | Manual `new`/`delete`   | **Smart Pointers** (RAII)         |
+| **Concurrency**    | `pthread`               | **`std::thread`**, **`std::mutex`** |
+| **Containers**     | Raw arrays, custom lists| **Standard Library Containers**   |
+| **String Handling**| `char*`, `strcpy`       | **`std::string`**, **`string_view`**|
+| **File Paths**     | C-style string concat   | **`std::filesystem`**             |
+| **Callbacks**      | Function pointers       | **`std::function`** + **Lambdas** |
+| **Configuration**  | Command-line only       | **Config file** + Command-line    |
+| **Build System**   | Makefile                | **CMake**                         |
+
+## 📜 License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+bash
 # Ubuntu/Debian
 sudo apt-get update
 sudo apt-get install build-essential cmake libmysqlclient-dev
@@ -162,18 +212,7 @@ cd bin
 - 🎯 标准化的现代构建流程
 - 🛠️ 支持交叉编译和自定义配置
 
-### 方式二：使用传统 Makefile
 
-```bash
-# 编译
-make
-
-# 或指定编译器和标准
-make CXX=g++ CXXFLAGS="-std=c++17 -O2"
-
-# 运行
-./server
-```
 
 ### 数据库配置
 
